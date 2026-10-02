@@ -92,7 +92,7 @@ export const MATERIALS: readonly MaterialDef[] = [
   { id: 'inox', price: 50, raw: 16, k: 1.7, minTier: 1, research: 30000, act: 2 },
   { id: 'titane', price: 160, raw: 55, k: 2.4, minTier: 2, research: 400000, act: 3 },
   { id: 'carbure', price: 600, raw: 220, k: 3.2, minTier: 3, research: 8_000_000, act: 4 },
-  { id: 'diamant', price: 3000, raw: 1200, k: 4.5, minTier: 4, research: 500_000_000, act: 4 },
+  { id: 'diamant', price: 3000, raw: 1200, k: 4.5, minTier: 4, research: 600_000_000, act: 4 },
 ];
 
 /** Part du facteur matériau appliquée à chaque poste. */
@@ -223,7 +223,7 @@ export const ACTS: readonly ActDef[] = [
   { id: 0, market: 4, maxChains: 1, hall: 0, vmax: 3, goal: { kind: 'debt' } },
   { id: 1, market: 180, maxChains: 2, hall: 400, vmax: 4, goal: { kind: 'share', share: 0.5, hold: 30 } },
   { id: 2, market: 2200, maxChains: 4, hall: 3000, vmax: 4.5, goal: { kind: 'share', share: 0.5, hold: 30 } },
-  { id: 3, market: 56000, maxChains: 8, hall: 15000, vmax: 5, goal: { kind: 'share', share: 0.5, hold: 30 } },
+  { id: 3, market: 60000, maxChains: 8, hall: 15000, vmax: 5, goal: { kind: 'share', share: 0.5, hold: 30 } },
   { id: 4, market: 10_000_000, maxChains: 16, hall: 100000, vmax: 5, goal: { kind: 'cash', amount: 1.5e9 } },
   // Bac à sable : marché sans plafond pratique.
   { id: 5, market: 1e12, maxChains: 16, hall: 100000, vmax: 5, goal: { kind: 'none' } },

@@ -11,7 +11,8 @@ import {
 } from '../data/balance';
 import { daylight, windFactor } from './env';
 import {
-  clamp, knowHow, moraleActive, moraleCap, moraleFactor, priceMult, scrapRate, specBonus, stationCycle, unitPrice,
+  clamp, knowHow, moraleActive, moraleCap, moraleFactor, priceMult, scrapRate, specBonus, stationCycle, trainCost, trainTime,
+  unitPrice,
 } from './formulas';
 import { rand, randInt, randRange } from './rng';
 import type { Chain, GameState, SimEvent, Worker } from './types';
@@ -56,6 +57,7 @@ export function step(s: GameState, dt: number, input: StepInput): void {
 
   timers(s, dt);
   if (s.roles.foreman && crossed(s.t, dt, 5)) for (let i = 0; i < s.chains.length; i++) assignHomes(s, i);
+  if (s.roles.hr && crossed(s.t, dt, 5)) hrDecisions(s);
 
   // Production
   const prodByMat = MATERIALS.map(() => 0);
@@ -408,6 +410,41 @@ export function assignHomes(s: GameState, ci: number): void {
       }
     }
     if (best < 0 || !take(best)) break;
+  }
+}
+
+/**
+ * Ressources humaines : forment un ouvrier quand une machine manque d'opérateur qualifié
+ * (un technicien par chaîne robotisée), si la trésorerie le permet. Elles n'embauchent pas.
+ */
+function hrDecisions(s: GameState): void {
+  for (let ci = 0; ci < s.chains.length; ci++) {
+    const c = s.chains[ci];
+    const ws = s.workers.filter((w) => w.chain === ci);
+    const lv = (w: Worker) => (w.state === 'train' ? w.trainTo : w.level);
+    const reqs: number[] = [];
+    if (s.act >= 3 && c.stations.some((st) => st.tier === ROBOT_TIER)) reqs.push(4);
+    reqs.push(3, 2);
+    for (const req of reqs) {
+      if (req === 3 && s.act < 2) continue;
+      let need = 0;
+      if (req === 4) need = 1;
+      else for (const st of c.stations) if (st.tier < ROBOT_TIER && TIER_OPERATOR_LEVEL[st.tier] >= req) need += st.units.length;
+      if (ws.filter((w) => lv(w) >= req).length >= need) continue;
+      const pool = ws.filter((w) => w.state !== 'train' && w.level === req - 1);
+      if (!pool.length) continue;
+      const cost = trainCost(s, req);
+      if (s.money < cost * 2) continue;
+      const w = pool.find((x) => x.state === 'idle') ?? pool[pool.length - 1];
+      s.money -= cost;
+      releaseWorker(s, w);
+      w.state = 'train';
+      w.timer = trainTime(s, req);
+      w.trainTo = req;
+      w.home = -1;
+      emit(s, { type: 'hrTrain', worker: w.id, level: req });
+      break;
+    }
   }
 }
 

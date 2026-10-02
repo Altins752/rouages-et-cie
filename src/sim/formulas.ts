@@ -1,7 +1,7 @@
 import {
   ACTS, CHAIN_COPY_FACTOR, CYCLE, HALL_GROWTH, KNOW_HOW, MATERIALS, MATERIAL_STATION_SHARE, MORALE,
   PRESTIGE, REPUTATION, RESALE, SCRAP, SPEC_MAX, SPEC_STEP, SPEC_STEP_TIME, TOOL_COST_FACTOR,
-  TOOL_SPEED, UNIT_GROWTH, UNIT_PRICE, FERRUM,
+  TOOL_SPEED, UNIT_GROWTH, UNIT_PRICE, FERRUM, TRAIN_COST, TRAIN_TIME,
 } from '../data/balance';
 import type { KnowHowId } from '../data/balance';
 import type { Chain, GameState, Station, Worker } from './types';
@@ -115,4 +115,12 @@ export function materialOk(s: GameState, c: Chain, m: number): boolean {
 
 export function robotChain(c: Chain): boolean {
   return c.stations.some((st) => st.tier === 3);
+}
+
+export function trainCost(s: GameState, level: number): number {
+  return Math.round(TRAIN_COST[level] * (1 - knowHow(s, 'training') * 0.5));
+}
+
+export function trainTime(s: GameState, level: number): number {
+  return TRAIN_TIME[level] * (1 - knowHow(s, 'training'));
 }

@@ -5,12 +5,13 @@
 import {
   ACTS, CANTEEN_COST, CONTRACTS, ENERGY, KNOW_HOW, MATERIALS, MAX_UNITS, MAX_WORKERS_PER_CHAIN, PRESTIGE,
   PROLOGUE, RESEARCH_EXTRA, REPUTATION, ROLES, SANDBOX_ACT, TIER_COUNT, TIER_MIN_ACT, TIER_RESEARCH, TOOL_MAX,
-  TRAIN_COST, TRAIN_TIME, WEAR, DOOR_POS,
+  WEAR, DOOR_POS,
 } from '../data/balance';
 import type { KnowHowId, RoleId } from '../data/balance';
 import { assignHomes, releaseWorker } from './engine';
 import {
-  chainValue, knowHow, knowHowCost, knowHowGain, materialOk, modernizeCost, newChainCost, toolCost, unitPrice,
+  chainValue, knowHow, knowHowCost, knowHowGain, materialOk, modernizeCost, newChainCost, toolCost, trainCost, trainTime,
+  unitPrice,
 } from './formulas';
 import { newChain, newStation, newUnit, newWorker } from './state';
 import type { Chain, GameState, Worker } from './types';
@@ -56,13 +57,7 @@ export function fire(s: GameState, ci: number, id?: number): Result {
   return ok(0, w.name);
 }
 
-export function trainCost(s: GameState, level: number): number {
-  return Math.round(TRAIN_COST[level] * (1 - knowHow(s, 'training') * 0.5));
-}
-
-export function trainTime(s: GameState, level: number): number {
-  return TRAIN_TIME[level] * (1 - knowHow(s, 'training'));
-}
+export { trainCost, trainTime };
 
 /** Forme un ouvrier de la chaîne au niveau `level` (depuis level − 1). */
 export function train(s: GameState, ci: number, level: number, id?: number): Result {

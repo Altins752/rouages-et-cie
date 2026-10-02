@@ -51,4 +51,33 @@ test.describe('actes joués par l’IA du simulateur', () => {
     expect(await page.evaluate(() => (window as any).__rouages.G.s.money)).toBeLessThan(-50);
     await shot(page, 'acte1-panne');
   });
+
+  test('acte II : site régional, énergie visible, contrats, moral', async ({ page }) => {
+    const r = await playTo(page, 2, 1500);
+    expect(r.act).toBe(2);
+    expect(r.chains).toBeGreaterThanOrEqual(2);
+    await page.evaluate(() => {
+      const g = (window as any).__rouages;
+      g.G.s.money += 30000;
+    });
+    await page.keyboard.press('1');
+    const wind0 = await page.evaluate(() => (window as any).__rouages.G.s.energy.wind);
+    await page.locator('[data-act="energy"][data-i="wind"]').click();
+    await page.locator('[data-act="energy"][data-i="battery"]').click();
+    expect(await page.evaluate(() => (window as any).__rouages.G.s.energy.wind)).toBe(wind0 + 1);
+    await expect(page.getByText('Énergie')).toBeVisible();
+    // contrats : accepter une offre s'il y en a une
+    await page.keyboard.press('4');
+    const accept = page.getByRole('button', { name: /Accepter/ }).first();
+    if (await accept.count()) {
+      await accept.click();
+      expect(await page.evaluate(() => (window as any).__rouages.G.s.spot.some((c: any) => c.accepted))).toBe(true);
+    }
+    await shot(page, 'acte2-marche');
+    await page.keyboard.press('2');
+    await shot(page, 'acte2-equipe');
+    await page.keyboard.press('1');
+    await page.waitForTimeout(300);
+    await shot(page, 'acte2');
+  });
 });

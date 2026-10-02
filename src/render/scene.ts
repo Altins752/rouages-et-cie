@@ -4,15 +4,19 @@
  */
 import { BUFFER_CAP, MATERIALS, MAX_UNITS } from '../data/balance';
 import { bottleneckOf, stationCapacities } from '../sim/analysis';
-import { ambient, daylight } from '../sim/env';
+import { ambient, daylight, windFactor } from '../sim/env';
 import { robotChain, stationCycle } from '../sim/formulas';
 import type { Chain, GameState, Worker } from '../sim/types';
 import { STATION_NAMES } from '../ui/text';
-import { FLOOR, HALL_H, HALL_W, LY, SX, gridCols, hallOrigin, posX, siteBounds } from './layout';
+import { ANNEX_W, FLOOR, HALL_H, HALL_W, LY, ROOF_H, SX, gridCols, hallOrigin, posX, siteBounds, siteExtent, turbinePos } from './layout';
+import type { Bounds } from './layout';
 import { particles, smoke } from './particles';
 
 const TAU = Math.PI * 2;
 const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
+
+/** Largeur d'un hall à l'écran (px) au-delà de laquelle on montre l'intérieur. */
+export const INTERIOR_PX = 300;
 
 export const MATERIAL_COLORS = ['#6f747c', '#c3ccd6', '#e0b244', '#eef2f6', '#8fb0e0', '#33363d', '#d8f6ff'];
 
@@ -27,22 +31,21 @@ export class Camera {
   tz = 1;
   /** Le joueur a déplacé ou zoomé : on ne recadre plus automatiquement. */
   user = false;
-  private lastN = -1;
+  private lastKey = '';
   private lastW = 0;
   private lastH = 0;
 
-  fitZoom(n: number, cw: number, ch: number): number {
-    const b = siteBounds(n);
-    const m = n === 1 ? 1.0 : 1.08;
-    return Math.min(cw / (b.w * m + 20), ch / (b.h * m + (n === 1 ? 0 : 60)));
+  fitZoom(b: Bounds, cw: number, ch: number): number {
+    const single = b.w <= HALL_W + 1;
+    const m = single ? 1.0 : 1.06;
+    return Math.min(cw / (b.w * m + 20), ch / (b.h * m + (single ? 0 : 40)));
   }
 
   /** Recadre sur tout le site (la caméra recule quand l'usine grandit). */
-  fit(n: number, cw: number, ch: number, instant = false): void {
-    const b = siteBounds(n);
+  fit(b: Bounds, cw: number, ch: number, instant = false): void {
     this.tx = b.x + b.w / 2;
-    this.ty = b.y + b.h / 2 + (n === 1 ? 0 : -10);
-    this.tz = this.fitZoom(n, cw, ch);
+    this.ty = b.y + b.h / 2;
+    this.tz = this.fitZoom(b, cw, ch);
     this.user = false;
     if (instant) {
       this.x = this.tx;
@@ -51,11 +54,11 @@ export class Camera {
     }
   }
 
-  update(n: number, cw: number, ch: number, dt: number): void {
-    if (n !== this.lastN || cw !== this.lastW || ch !== this.lastH) {
-      const first = this.lastN < 0;
-      if (!this.user || n !== this.lastN) this.fit(n, cw, ch, first);
-      this.lastN = n;
+  update(b: Bounds, key: string, cw: number, ch: number, dt: number): void {
+    if (key !== this.lastKey || cw !== this.lastW || ch !== this.lastH) {
+      const first = this.lastKey === '';
+      if (!this.user || key !== this.lastKey) this.fit(b, cw, ch, first);
+      this.lastKey = key;
       this.lastW = cw;
       this.lastH = ch;
     }
@@ -65,12 +68,11 @@ export class Camera {
     this.zoom *= Math.pow(this.tz / this.zoom, k);
   }
 
-  zoomAt(factor: number, px: number, py: number, cw: number, ch: number, n: number): void {
-    const fit = this.fitZoom(n, cw, ch);
-    const nz = clamp(this.tz * factor, fit * 0.85, Math.max(fit * 4, 3.2));
+  zoomAt(factor: number, px: number, py: number, cw: number, ch: number, b: Bounds): void {
+    const fit = this.fitZoom(b, cw, ch);
+    const nz = clamp(this.tz * factor, fit * 0.85, Math.max(fit * 5, 3.2));
     const w = this.toWorld(px, py, cw, ch);
     this.tz = nz;
-    // garder le point sous le curseur
     this.tx = w.x - (px - cw / 2) / nz;
     this.ty = w.y - (py - ch / 2) / nz;
     this.user = true;
@@ -87,6 +89,16 @@ export class Camera {
   toWorld(px: number, py: number, cw: number, ch: number): { x: number; y: number } {
     return { x: (px - cw / 2) / this.zoom + this.x, y: (py - ch / 2) / this.zoom + this.y };
   }
+}
+
+/** Le site a une annexe (énergie, cantine) à partir de l'acte II. */
+export function hasAnnex(s: GameState): boolean {
+  return s.act >= 2;
+}
+
+export function viewBounds(s: GameState): { b: Bounds; key: string } {
+  const annex = hasAnnex(s);
+  return { b: siteExtent(s.chains.length, annex), key: `${s.chains.length}|${annex ? 1 : 0}|${s.stats.moves}` };
 }
 
 // ------------------------------------------------------------------ Options
@@ -661,6 +673,16 @@ function drawWorker(w: Worker, idx: number, dt: number): void {
   ctx.fill();
   ctx.fillRect(x - 3, y - 19, 6.6, 0.8);
   if (w.state === 'walk' && w.ts > 0) lopin(x + 6, y - 9, S.chains[w.chain].material);
+  // fatigue visible : une goutte de sueur au-dessus des ouvriers épuisés
+  if (S.act >= 2 && w.morale < 0.45) {
+    const bob = O.reduced ? 0 : Math.sin(r.anim) * 0.8;
+    ctx.fillStyle = '#7fc4ff';
+    ctx.beginPath();
+    ctx.moveTo(x + 4, y - 24 + bob);
+    ctx.quadraticCurveTo(x + 6.5, y - 20 + bob, x + 4, y - 19 + bob);
+    ctx.quadraticCurveTo(x + 1.5, y - 20 + bob, x + 4, y - 24 + bob);
+    ctx.fill();
+  }
   if (w.name === 'Marcel' || (O.hover && O.hover.worker === w.id)) {
     ctx.fillStyle = 'rgba(255,255,255,.75)';
     ctx.font = '6px "Chakra Petch", sans-serif';
@@ -795,7 +817,7 @@ function drawInterior(c: Chain, ci: number, dt: number): void {
 
 // ------------------------------------------------------------------ Extérieur
 
-function drawExterior(c: Chain, ci: number): void {
+function drawExterior(c: Chain, ci: number, panels: number): void {
   const style = hallStyle(c);
   const amb = ambient(S.t);
   const lights = lightLevel(style);
@@ -816,6 +838,12 @@ function drawExterior(c: Chain, ci: number): void {
     ctx.lineTo(k * 80 + 78, 58);
     ctx.fill();
     ctx.fillStyle = style === 'black' ? '#0c0d10' : '#4b5259';
+  }
+  for (let k = 0; k < panels; k++) {
+    const slot = k % 12;
+    const sx = Math.floor(slot / 2.4) * 80 + (slot % 2) * 28 + 6;
+    const t = (sx % 80) / 62;
+    solarPanel(sx, 60 - t * 40 * 0.9 - 6, 24, 6);
   }
   ctx.fillStyle = wall;
   ctx.fillRect(0, 60, HALL_W, FLOOR - 40);
@@ -880,12 +908,14 @@ function drawExterior(c: Chain, ci: number): void {
   ctx.fillRect(-10, FLOOR + 20, HALL_W + 20, 6);
 }
 
-function drawGround(): void {
+function drawGround(top: number): void {
   const n = S.chains.length;
   const b = siteBounds(n);
   const amb = ambient(S.t);
   ctx.fillStyle = mix([28, 32, 30], [96, 104, 96], amb);
-  ctx.fillRect(b.x - 2000, b.y - 60, b.w + 4000, b.h + 2000);
+  ctx.fillRect(b.x - 3000, top, b.w + 6000, b.h + 3000);
+  ctx.fillStyle = mix([40, 46, 40], [120, 132, 112], amb);
+  ctx.fillRect(b.x - 3000, top, b.w + 6000, 6);
   // routes entre les rangées
   const cols = gridCols(n);
   const rows = Math.ceil(n / cols);
@@ -915,6 +945,178 @@ function drawSky(cw: number, ch: number): void {
   }
 }
 
+// ------------------------------------------------------------------ Annexe : énergie, cantine
+
+const ROOF_SLOTS = 12;
+
+
+function solarSplit(): { perHall: number[]; ground: number } {
+  const n = S.chains.length;
+  const total = S.energy.solar;
+  const perHall = S.chains.map((_, i) => Math.min(ROOF_SLOTS, Math.floor(total / n) + (i < total % n ? 1 : 0)));
+  const used = perHall.reduce((a, b) => a + b, 0);
+  return { perHall, ground: total - used };
+}
+
+function solarPanel(x: number, y: number, w: number, h: number): void {
+  const d = daylight(S.t);
+  ctx.fillStyle = '#1d2c48';
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = 'rgba(140,170,220,.45)';
+  ctx.lineWidth = 0.5;
+  for (let k = 1; k < 4; k++) {
+    ctx.beginPath();
+    ctx.moveTo(x + (w * k) / 4, y);
+    ctx.lineTo(x + (w * k) / 4, y + h);
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.moveTo(x, y + h / 2);
+  ctx.lineTo(x + w, y + h / 2);
+  ctx.stroke();
+  if (d > 0.05) {
+    ctx.fillStyle = `rgba(255,250,220,${0.35 * d})`;
+    ctx.fillRect(x + 1, y + 1, w * 0.35, 1.2);
+  }
+  ctx.fillStyle = '#9aa1aa';
+  ctx.fillRect(x, y + h, w, 1);
+}
+
+/** Toit en coupe au-dessus d'un hall (vue intérieure), avec ses panneaux. */
+function drawRoof(ci: number, panels: number): void {
+  const style = hallStyle(S.chains[ci]);
+  ctx.fillStyle = style === 'black' ? '#0e1013' : '#4b5259';
+  for (let k = 0; k < 5; k++) {
+    ctx.beginPath();
+    ctx.moveTo(k * 80, 0);
+    ctx.lineTo(k * 80 + 62, -ROOF_H);
+    ctx.lineTo(k * 80 + 80, -ROOF_H);
+    ctx.lineTo(k * 80 + 80, 0);
+    ctx.fill();
+  }
+  for (let k = 0; k < panels; k++) {
+    const slot = k % 12;
+    const sx = Math.floor(slot / 2.4) * 80 + (slot % 2) * 28 + 6;
+    const t = (sx % 80) / 62;
+    solarPanel(sx, -t * ROOF_H * 0.9 - 6, 24, 6);
+  }
+}
+
+function drawTurbines(): void {
+  const n = S.chains.length;
+  const total = S.energy.wind;
+  const wf = windFactor(S.t);
+  for (let i = 0; i < total; i++) {
+    const p = turbinePos(i, total, n);
+    const h = 120 - (Math.floor(i / 20) % 2) * 20;
+    ctx.fillStyle = '#d8dde3';
+    ctx.beginPath();
+    ctx.moveTo(p.x - 3, p.y);
+    ctx.lineTo(p.x + 3, p.y);
+    ctx.lineTo(p.x + 1.2, p.y - h);
+    ctx.lineTo(p.x - 1.2, p.y - h);
+    ctx.fill();
+    ctx.fillStyle = '#c6ccd3';
+    ctx.fillRect(p.x - 4, p.y - h - 3, 9, 5);
+    const a0 = (O.reduced ? 0 : O.T * (1.2 + 2.6 * wf)) + i * 0.7;
+    ctx.strokeStyle = '#eef1f4';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    for (let k = 0; k < 3; k++) {
+      const a = a0 + (k * TAU) / 3;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y - h);
+      ctx.lineTo(p.x + Math.cos(a) * 34, p.y - h + Math.sin(a) * 34);
+      ctx.stroke();
+    }
+    ctx.lineCap = 'butt';
+    glowDot(p.x, p.y - h - 2, 1.2, '255,60,40', Math.sin(O.T * 2 + i) > 0.6 ? 0.9 : 0.15);
+  }
+}
+
+function drawAnnex(groundSolar: number): void {
+  const x0 = -ANNEX_W - 10;
+  const amb = ambient(S.t);
+  // terrain
+  ctx.fillStyle = 'rgba(0,0,0,.18)';
+  ctx.fillRect(x0, HALL_H - 4, ANNEX_W, 8);
+  ctx.strokeStyle = 'rgba(242,183,5,.35)';
+  ctx.setLineDash([6, 4]);
+  ctx.strokeRect(x0 + 0.5, 0.5, ANNEX_W - 1, HALL_H - 1);
+  ctx.setLineDash([]);
+  // panneaux au sol (au-delà des toits)
+  for (let k = 0; k < Math.min(groundSolar, 8); k++) {
+    solarPanel(x0 + 10 + (k % 4) * 39, 12 + Math.floor(k / 4) * 16, 34, 8);
+  }
+  if (groundSolar > 8) {
+    ctx.fillStyle = '#ffd84a';
+    ctx.font = '9px "Share Tech Mono", monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(`+${groundSolar - 8} panneaux`, x0 + 10, 50);
+  }
+  // batteries : conteneurs
+  const nb = S.energy.battery;
+  const cap = Math.max(1, nb * 10000);
+  const charge = S.energy.charge / cap;
+  for (let k = 0; k < nb; k++) {
+    const bx = x0 + 10 + (k % 2) * 78;
+    const by = 62 + Math.floor(k / 2) * 26;
+    ctx.fillStyle = '#e8ebe6';
+    ctx.fillRect(bx, by, 72, 20);
+    ctx.fillStyle = '#2f8a57';
+    ctx.fillRect(bx, by, 72, 4);
+    ctx.strokeStyle = 'rgba(0,0,0,.15)';
+    for (let j = 1; j < 9; j++) {
+      ctx.beginPath();
+      ctx.moveTo(bx + j * 8, by + 4);
+      ctx.lineTo(bx + j * 8, by + 20);
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#1b1d21';
+    ctx.fillRect(bx + 52, by + 8, 16, 6);
+    glowDot(bx + 54 + 12 * Math.min(1, charge), by + 11, 1.4, charge > 0.2 ? '90,255,150' : '255,90,70', 0.9);
+  }
+  // cantine
+  if (S.canteen > 0) {
+    const cx = x0 + 18;
+    const cy = HALL_H - 96;
+    ctx.fillStyle = '#9a5a3c';
+    ctx.fillRect(cx, cy, 130, 92);
+    ctx.fillStyle = '#5b3a2a';
+    ctx.beginPath();
+    ctx.moveTo(cx - 6, cy);
+    ctx.lineTo(cx + 65, cy - 26);
+    ctx.lineTo(cx + 136, cy);
+    ctx.fill();
+    ctx.fillStyle = '#f1ead8';
+    ctx.fillRect(cx + 30, cy + 8, 70, 14);
+    ctx.fillStyle = '#2a2620';
+    ctx.font = '600 10px "Chakra Petch", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('CANTINE', cx + 65, cy + 15.5);
+    const lit = 0.35 + 0.65 * (1 - amb);
+    for (let k = 0; k < 3; k++) {
+      ctx.fillStyle = `rgba(255,${Math.round(190 + 40 * lit)},${Math.round(110 + 40 * lit)},${0.5 + 0.5 * lit})`;
+      ctx.fillRect(cx + 12 + k * 40, cy + 34, 26, 22);
+      if (glow && lit > 0.5) {
+        glow.fillStyle = `rgba(255,200,120,${0.35 * lit})`;
+        glow.fillRect(cx + 12 + k * 40, cy + 34, 26, 22);
+      }
+    }
+    ctx.fillStyle = '#4a2c1e';
+    ctx.fillRect(cx + 55, cy + 64, 20, 28);
+    ctx.fillStyle = '#5b3a2a';
+    ctx.fillRect(cx + 104, cy - 30, 10, 22);
+    if (Math.random() < 0.08 && !O.reduced) smoke(cx + 109, cy - 32, 'rgba(220,220,225,.4)', 4, 2.4);
+  } else {
+    ctx.fillStyle = 'rgba(242,183,5,.6)';
+    ctx.font = '10px "Share Tech Mono", monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(nb === 0 && S.energy.solar === 0 ? 'Terrain disponible' : '', x0 + ANNEX_W / 2, HALL_H - 40);
+  }
+}
+
 // ------------------------------------------------------------------ Entrée
 
 export interface DrawTarget {
@@ -936,8 +1138,9 @@ export function drawScene(t: DrawTarget, s: GameState, cam: Camera, o: SceneOpts
     glow.clearRect(0, 0, cw, ch);
   }
   const n = s.chains.length;
-  const single = n === 1;
-  if (single) {
+  const annex = hasAnnex(s);
+  const outdoor = annex || n > 1;
+  if (!outdoor) {
     ctx.fillStyle = '#15171a';
     ctx.fillRect(0, 0, cw, ch);
   } else drawSky(cw, ch);
@@ -946,12 +1149,18 @@ export function drawScene(t: DrawTarget, s: GameState, cam: Camera, o: SceneOpts
     ctx.setTransform(...m);
     if (glow) glow.setTransform(...m);
   };
-  if (!single) {
+  const split = solarSplit();
+  if (outdoor) {
     base(0, 0);
-    drawGround();
+    drawGround(annex ? -ROOF_H - 18 : -60);
+  }
+  if (annex) {
+    base(0, 0);
+    drawTurbines();
+    drawAnnex(split.ground);
   }
   const hallPx = HALL_W * cam.zoom;
-  const interior = hallPx >= 330;
+  const interior = hallPx >= INTERIOR_PX;
   for (let ci = 0; ci < n; ci++) {
     const o2 = hallOrigin(ci, n);
     // hors écran ?
@@ -960,12 +1169,13 @@ export function drawScene(t: DrawTarget, s: GameState, cam: Camera, o: SceneOpts
     if (sx > cw || sy > ch || sx + hallPx < 0 || sy + HALL_H * cam.zoom < -60 * cam.zoom) continue;
     curHall = ci;
     base(o2.x, o2.y);
+    if (interior && annex) drawRoof(ci, split.perHall[ci]);
     ctx.save();
     ctx.beginPath();
     ctx.rect(-2, interior ? 0 : -40, HALL_W + 4, HALL_H + (interior ? 0 : 60));
     ctx.clip();
     if (interior) drawInterior(s.chains[ci], ci, dt);
-    else drawExterior(s.chains[ci], ci);
+    else drawExterior(s.chains[ci], ci, annex ? split.perHall[ci] : 0);
     ctx.restore();
     if (o.selected === ci && n > 1) {
       ctx.strokeStyle = '#f2b705';
@@ -1016,7 +1226,7 @@ export function hitTest(s: GameState, cam: Camera, px: number, py: number, cw: n
     const lx = w.x - o.x;
     const ly = w.y - o.y;
     if (lx < 0 || ly < 0 || lx > HALL_W || ly > HALL_H) continue;
-    if (HALL_W * cam.zoom < 330) return { hall: ci, station: -1, unit: -1, worker: -1 };
+    if (HALL_W * cam.zoom < INTERIOR_PX) return { hall: ci, station: -1, unit: -1, worker: -1 };
     // ouvriers d'abord
     let best = -1;
     let bd = 9;

@@ -45,18 +45,18 @@ Ce fichier sert à reprendre une session interrompue : l'étape en cours est mar
 - [x] Deux chaînes max (frais de hall), vue de site à deux halls, jalons secondaires
 - [x] Tests (act1.test.ts), e2e acte I joué par l'IA (machines, goulot, panne), captures vérifiées, commit
 
-## Étape 4 — Acte II : la région — EN COURS
+## Étape 4 — Acte II : la région — FAIT
 
-- [ ] Déménagement (prestige d'acte) : savoir-faire, capital 15 %, conservés / remis à zéro
-- [ ] Chaînes multiples (4), halls, caméra qui recule, zoom et déplacement
-- [ ] Usure complète, maintenance préventive, atelier de maintenance
-- [ ] Moral, spécialisation, cantine, RH, superviseur de chaîne
-- [ ] Énergie : réseau, solaire, éolien, batterie, revente, coupure si dette
-- [ ] Contrats ponctuels et long terme, réputation, événements Ferrum, directeur d'incidents
-- [ ] Inox, semi-automatique
-- [ ] Sim, tests, e2e, capture, commit
+- [x] Déménagement (prestige d'acte) : savoir-faire, capital 15 %, conservés / remis à zéro
+- [x] Chaînes multiples (4), halls, caméra qui recule, zoom à la molette, déplacement au glisser
+- [x] Usure complète, révision, maintenance préventive, atelier de maintenance
+- [x] Moral (goulot qui s'épuise, plancher 70 %), spécialisation, cantine, RH (formation automatique), superviseur (conseil d'achat)
+- [x] Énergie : réseau, solaire, éolien, batterie, revente, coupure si dette ; tout est visible dans la scène (annexe du site)
+- [x] Contrats ponctuels et long terme, réputation, événements Ferrum, directeur d'incidents (une crise à la fois)
+- [x] Inox, semi-automatique
+- [x] Tests (act2.test.ts), e2e acte II joué par l'IA (énergie, contrats), captures vérifiées, sim, commit
 
-## Étape 5 — Acte III : le pays
+## Étape 5 — Acte III : le pays — EN COURS
 
 - [ ] Rôles support (logistique, commercial, contrôleur de gestion)
 - [ ] Onglet Données verrouillé par rôles (graphiques, tableaux)
@@ -90,6 +90,12 @@ Minutes réelles par étape (graine 11). Critères : actif entre 5 et 6 h, prolo
 | Étape 1 | Calme | 11,5 | 39,5 | 154,0 | 160,3 | 328,5 | 11 h 34 |
 | Étape 1 | Actif | 7,1 | 22,1 | 47,1 | 69,9 | 177,3 | 5 h 24 |
 | Étape 1 | Zone rouge | 4,3 | 12,5 | 23,0 | 45,7 | 82,1 | 2 h 48 |
+
+| Étape 4 | Calme | 11,5 | 39,5 | 98,5 | 202,5 | 347,8 | 11 h 40 |
+| Étape 4 | Actif | 7,1 | 22,1 | 46,5 | 69,3 | 180,9 | 5 h 26 |
+| Étape 4 | Zone rouge | 4,3 | 12,5 | 25,2 | 31,9 | 79,5 | 2 h 33 |
+
+Actif sur d'autres graines (étape 4) : 5 h 18 (graine 23), 5 h 21 (graine 37).
 
 Actif sur d'autres graines (étape 1) : 5 h 15 (graine 37), 5 h 30 (graine 23).
 

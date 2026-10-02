@@ -222,6 +222,7 @@ export type SimEvent =
   | { type: 'breakdown'; chain: number; station: number; unit: number }
   | { type: 'repaired'; chain: number; station: number; unit: number }
   | { type: 'trained'; worker: number; level: number }
+  | { type: 'hrTrain'; worker: number; level: number }
   | { type: 'deadline'; debt: number }
   | { type: 'goal' }
   | { type: 'ferrum'; event: 'poach' | 'war' | 'exclusive'; name?: string }

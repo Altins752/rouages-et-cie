@@ -5,7 +5,7 @@ import { G, inRed, loadSettings, newGame, saveSettings, tachoTick, tapBoost } fr
 import type { Tab } from './game';
 import { installDebug } from './debug';
 import { setParticleBudget, sparks, updateParticles } from './render/particles';
-import { Camera, drawScene, hitTest, worldOfStation } from './render/scene';
+import { Camera, INTERIOR_PX, drawScene, hitTest, viewBounds, worldOfStation } from './render/scene';
 import type { Hover } from './render/scene';
 import { PostFx } from './render/postfx';
 import { hallOrigin } from './render/layout';
@@ -83,7 +83,7 @@ function screenPan(ci: number, si: number): number {
 }
 
 function interiorVisible(): boolean {
-  return 400 * cam.zoom >= 330;
+  return 400 * cam.zoom >= INTERIOR_PX;
 }
 
 function handleEvents(events: SimEvent[]): void {
@@ -119,6 +119,11 @@ function handleEvents(events: SimEvent[]): void {
         const w = s.workers.find((x) => x.id === e.worker);
         sfx('hire');
         if (w) toast(`🎓 ${w.name} formé·e : ${LEVEL_NAMES[e.level].toLowerCase()}`);
+        break;
+      }
+      case 'hrTrain': {
+        const w = s.workers.find((x) => x.id === e.worker);
+        if (w) toast(`📋 RH : ${w.name} part en formation (${LEVEL_NAMES[e.level].toLowerCase()})`);
         break;
       }
       case 'goal':
@@ -206,7 +211,7 @@ window.addEventListener('pagehide', save);
 function begin(): void {
   G.started = true;
   G.paused = false;
-  cam.fit(G.s.chains.length, cw, ch, true);
+  cam.fit(viewBounds(G.s).b, cw, ch, true);
   invalidatePanel();
   renderPanel();
   save();
@@ -290,14 +295,14 @@ setPanelHooks({
   buyout: startFinale,
   move: () => {
     if (U.move()) {
-      cam.fit(G.s.chains.length, cw, ch, true);
+      cam.fit(viewBounds(G.s).b, cw, ch, true);
       invalidatePanel();
       save();
     }
   },
   newSite: () => {
     if (U.newSite()) {
-      cam.fit(G.s.chains.length, cw, ch, true);
+      cam.fit(viewBounds(G.s).b, cw, ch, true);
       invalidatePanel();
       save();
     }
@@ -360,7 +365,7 @@ stage.addEventListener('contextmenu', (e) => e.preventDefault());
 stage.addEventListener('wheel', (e) => {
   e.preventDefault();
   const r = stage.getBoundingClientRect();
-  cam.zoomAt(Math.pow(1.0015, -e.deltaY), (e.clientX - r.left) * dpr, (e.clientY - r.top) * dpr, cw, ch, G.s.chains.length);
+  cam.zoomAt(Math.pow(1.0015, -e.deltaY), (e.clientX - r.left) * dpr, (e.clientY - r.top) * dpr, cw, ch, viewBounds(G.s).b);
 }, { passive: false });
 stage.addEventListener('dblclick', (e) => {
   const r = stage.getBoundingClientRect();
@@ -375,7 +380,7 @@ stage.addEventListener('dblclick', (e) => {
     invalidatePanel();
     setTab('atelier');
     renderPanel();
-  } else cam.fit(G.s.chains.length, cw, ch);
+  } else cam.fit(viewBounds(G.s).b, cw, ch);
 });
 
 const TABS: Tab[] = ['atelier', 'equipe', 'rd', 'marche', 'donnees'];
@@ -417,9 +422,9 @@ document.addEventListener('keydown', (e) => {
     showHelp(() => (G.paused = false));
     return;
   }
-  if (e.key === '0') cam.fit(G.s.chains.length, cw, ch);
-  if (e.key === '+' || e.key === '=') cam.zoomAt(1.25, cw / 2, ch / 2, cw, ch, G.s.chains.length);
-  if (e.key === '-') cam.zoomAt(0.8, cw / 2, ch / 2, cw, ch, G.s.chains.length);
+  if (e.key === '0') cam.fit(viewBounds(G.s).b, cw, ch);
+  if (e.key === '+' || e.key === '=') cam.zoomAt(1.25, cw / 2, ch / 2, cw, ch, viewBounds(G.s).b);
+  if (e.key === '-') cam.zoomAt(0.8, cw / 2, ch / 2, cw, ch, viewBounds(G.s).b);
 });
 document.addEventListener('keyup', (e) => {
   if (e.code === 'Space') G.spaceHeld = false;
@@ -522,8 +527,9 @@ function tick(now: number): void {
   const fin = finaleTick();
   const view = fin && fin.phase === 'forge' && forgeState ? forgeState : s;
   if (view === forgeState && forgeState) step(forgeState, rdt, { red: false });
-  cam.update(view.chains.length, cw, ch, rdt);
-  if (fin?.phase === 'forge' && view === forgeState) cam.fit(1, cw, ch, true);
+  const vb = viewBounds(view);
+  cam.update(vb.b, vb.key, cw, ch, rdt);
+  if (fin?.phase === 'forge' && view === forgeState) cam.fit(vb.b, cw, ch, true);
   hoverT += rdt;
   if (hoverT > 0.1) {
     hoverT = 0;
