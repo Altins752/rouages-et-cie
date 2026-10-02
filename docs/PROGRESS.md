@@ -35,17 +35,17 @@ Ce fichier sert à reprendre une session interrompue : l'étape en cours est mar
 - [x] Tests : histoire (paliers, jalons, échéance), sauvegarde (aller-retour, migrations), hors ligne ; e2e (zone rouge, info-bulle, passage à l'acte I) ; captures vérifiées
 - [x] Commit
 
-## Étape 3 — Acte I : la ville — EN COURS
+## Étape 3 — Acte I : la ville — FAIT
 
-- [ ] Bureau d'études (R&D) : machines mécaniques, acier doux, laiton
-- [ ] Moderniser un poste, opérateurs à former (qualification), revente 25 %
-- [ ] Contremaître : cadences, goulot, postes attitrés
-- [ ] Marché de la ville (24 €/s), objectif 50 % pendant 30 s, Ferrum
-- [ ] Usure et pannes des machines, maintenance externe (jamais refusée)
-- [ ] Deux chaînes max (frais de hall), jalons secondaires
-- [ ] Sim, tests, e2e, capture, commit
+- [x] Bureau d'études (R&D) : machines mécaniques, acier doux, laiton
+- [x] Moderniser un poste, opérateurs à former (qualification), revente 25 %
+- [x] Contremaître : cadences, goulot, postes attitrés (+11 % sur une ligne de 12)
+- [x] Marché de la ville (180 €/s après rééquilibrage), objectif 50 % pendant 30 s, Ferrum (débauchage, guerre des prix)
+- [x] Usure et pannes des machines, maintenance externe (jamais refusée, dette possible), révision
+- [x] Deux chaînes max (frais de hall), vue de site à deux halls, jalons secondaires
+- [x] Tests (act1.test.ts), e2e acte I joué par l'IA (machines, goulot, panne), captures vérifiées, commit
 
-## Étape 4 — Acte II : la région
+## Étape 4 — Acte II : la région — EN COURS
 
 - [ ] Déménagement (prestige d'acte) : savoir-faire, capital 15 %, conservés / remis à zéro
 - [ ] Chaînes multiples (4), halls, caméra qui recule, zoom et déplacement

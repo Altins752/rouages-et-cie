@@ -131,7 +131,7 @@ function vAtelier(s: GameState): View {
     });
     h += '</div></div>';
     const cap = s.roles.foreman ? `${fmtP(caps[si])} pièce/s` : STATION_ROLE[si];
-    const ops = human ? ` · opérateur : ${LEVEL_NAMES[TIER_OPERATOR_LEVEL[st.tier]].toLowerCase()}` : ' · sans opérateur';
+    const ops = human ? ` · ${LEVEL_NAMES[TIER_OPERATOR_LEVEL[st.tier]].toLowerCase()} requis` : ' · sans opérateur';
     k[`g${si}`] = s.roles.foreman ? (si === b ? 'goulot' : 'ok') : TIER_NAMES[st.tier];
     k[`c${si}`] = `${cap} · ${st.units.length}/${MAX_UNITS} ${UNIT_WORD(st.tier, true)}${st.tool ? ` · outillage ${st.tool}` : ''}${st.tier > 0 ? ops : ''}`;
   });

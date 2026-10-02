@@ -480,6 +480,15 @@ let hoverT = 0;
 const pending: SimEvent[] = [];
 
 function frame(now: number): void {
+  try {
+    tick(now);
+  } catch (err) {
+    console.error(err);
+  }
+  requestAnimationFrame(frame);
+}
+
+function tick(now: number): void {
   const rdt = Math.min((now - last) / 1000, 0.1);
   last = now;
   const s = G.s;
@@ -535,7 +544,6 @@ function frame(now: number): void {
     updateConsole();
     renderPanel();
   }
-  requestAnimationFrame(frame);
 }
 
 // ------------------------------------------------------------------ Lancement

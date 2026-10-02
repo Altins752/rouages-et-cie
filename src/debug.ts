@@ -8,7 +8,7 @@ import * as A from './sim/actions';
 import { aiStep, newAi } from './sim/ai';
 import { step } from './sim/engine';
 import { createGame } from './sim/state';
-import { silenceStory } from './story/director';
+import { silenceStory, storyTick } from './story/director';
 import { invalidatePanel, renderPanel } from './ui/panel';
 import { telexClose } from './ui/telex';
 import { closeOverlay } from './ui/overlay';
@@ -47,12 +47,18 @@ export function installDebug(h: Hooks): void {
       const until = () => s.act >= act || s.ended;
       while (!until() && guard++ < 400000) {
         step(s, 0.25, { red: false });
-        if (++k % 16 === 0) aiStep(ai, s);
+        if (++k % 16 === 0) {
+          storyTick(s);
+          aiStep(ai, s);
+        }
         s.fx.length = 0;
       }
       for (let t = 0; t < extra; t += 0.25) {
         step(s, 0.25, { red: false });
-        if (++k % 16 === 0 && !(act === 4 && A.canBuyout(s))) aiStep(ai, s);
+        if (++k % 16 === 0 && !(act === 4 && A.canBuyout(s))) {
+          storyTick(s);
+          aiStep(ai, s);
+        }
         s.fx.length = 0;
       }
       silenceStory(s);
