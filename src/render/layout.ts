@@ -1,15 +1,21 @@
-/** Géométrie du monde : un hall par chaîne, disposés en grille sur le site. */
+/** Géométrie du monde : un hall par usine (4 chaînes en rangées), disposés en grille sur le site. */
 
 export const HALL_W = 400;
-export const HALL_H = 320;
+export const HALL_H = 404;
 export const GAP_X = 70;
 export const GAP_Y = 90;
+/** Écart entre deux postes d'une chaîne. */
+export const STEP_X = 78;
 /** Abscisse du centre de chaque poste dans un hall. */
-export const SX = [78, 158, 238, 318];
-/** Ordonnée de chaque rangée d'unités. */
-export const LY = [108, 150, 192, 234];
-export const FLOOR = 276;
+export const SX = [92, 170, 248, 326];
+/** Ordonnée de chaque chaîne (rangée de machines). */
+export const LY = [118, 180, 242, 304];
+/** Hauteur d'une rangée : la base des machines et des ouvriers est à LY + ROW_BASE. */
+export const ROW_BASE = 33;
+export const FLOOR = 360;
 export const DOOR_X = 392;
+/** Abscisse de la manivelle du convoyeur. */
+export const CRANK_X = 44;
 
 export function gridCols(n: number): number {
   if (n <= 1) return 1;
@@ -29,10 +35,11 @@ export function siteBounds(n: number): { x: number; y: number; w: number; h: num
   return { x: 0, y: 0, w: cols * HALL_W + (cols - 1) * GAP_X, h: rows * HALL_H + (rows - 1) * GAP_Y };
 }
 
-/** Abscisse d'un ouvrier à la position `pos` (en postes ; 4,5 = porte). */
+/** Abscisse d'un ouvrier à la position `pos` (en postes ; 4,5 = porte ; négatif = manivelle). */
 export function posX(pos: number): number {
-  if (pos <= 3) return SX[0] - 24 + 80 * pos;
-  return SX[3] - 24 + (pos - 3) * 65;
+  if (pos < 0) return CRANK_X - 16;
+  if (pos <= 3) return SX[0] - 24 + STEP_X * pos;
+  return SX[3] - 24 + (pos - 3) * 40;
 }
 
 export interface Bounds {

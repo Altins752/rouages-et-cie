@@ -18,13 +18,7 @@ type Migration = (data: Record<string, unknown>) => Record<string, unknown>;
 
 /** migrations[n] transforme une partie de version n en version n + 1. */
 export const migrations: Record<number, Migration> = {
-  // v1 → v2 : les contrats ponctuels comptent leurs pièces dans la part de marché au fil de l'eau.
-  1: (d) => {
-    const st = d.state as { spot?: { delivered: number; counted?: number }[]; workers?: { rest?: number }[] };
-    for (const c of st.spot ?? []) c.counted ??= c.delivered;
-    for (const w of st.workers ?? []) w.rest ??= 0;
-    return d;
-  },
+  // v1 et v2 (avant la refonte en usines et chaînes) ne sont pas migrées : nouvelle partie.
 };
 
 /** Complète récursivement les champs manquants avec les valeurs par défaut. */

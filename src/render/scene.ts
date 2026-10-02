@@ -2,13 +2,17 @@
  * Scène de l'usine (canvas 2D). Lit l'état de la simulation, ne le modifie jamais.
  * De près : l'intérieur de chaque hall (repris du POC). De loin : les bâtiments.
  */
-import { BUFFER_CAP, MATERIALS, MAX_UNITS } from '../data/balance';
-import { bottleneckOf, stationCapacities } from '../sim/analysis';
+import { BUFFER_CAP, CARRY_TIME, MATERIALS, MAX_UNITS, TIER_OPERATOR_LEVEL, TOOL_MAX } from '../data/balance';
+import { estimateFactory } from '../sim/analysis';
+import { conveyorActive } from '../sim/engine';
 import { ambient, daylight, windFactor } from '../sim/env';
-import { robotChain, stationCycle } from '../sim/formulas';
-import type { Chain, GameState, Worker } from '../sim/types';
+import { crankUseful, machineCycle, robotFactory } from '../sim/formulas';
+import type { Factory, GameState, Line, Worker } from '../sim/types';
 import { STATION_NAMES } from '../ui/text';
-import { ANNEX_W, FLOOR, HALL_H, HALL_W, LY, ROOF_H, SX, gridCols, hallOrigin, posX, siteBounds, siteExtent, turbinePos } from './layout';
+import {
+  ANNEX_W, CRANK_X, FLOOR, HALL_H, HALL_W, LY, ROOF_H, ROW_BASE, STEP_X, SX, gridCols, hallOrigin, posX, siteBounds, siteExtent,
+  turbinePos,
+} from './layout';
 import type { Bounds } from './layout';
 import { particles, smoke } from './particles';
 
@@ -99,7 +103,7 @@ export function hasAnnex(s: GameState): boolean {
 export function viewBounds(s: GameState): { b: Bounds; key: string } {
   const annex = hasAnnex(s);
   const wind = s.energy.wind > 0;
-  return { b: siteExtent(s.chains.length, annex, wind), key: `${s.chains.length}|${annex ? 1 : 0}|${wind ? 1 : 0}|${s.stats.moves}` };
+  return { b: siteExtent(s.factories.length, annex, wind), key: `${s.factories.length}|${annex ? 1 : 0}|${wind ? 1 : 0}|${s.stats.moves}` };
 }
 
 // ------------------------------------------------------------------ Options
@@ -116,10 +120,11 @@ export interface SceneOpts {
   hover: Hover | null;
 }
 
+/** Élément survolé : usine (hall), chaîne, poste (-2 = convoyeur), ouvrier. -1 = aucun. */
 export interface Hover {
   hall: number;
+  line: number;
   station: number;
-  unit: number;
   worker: number;
 }
 
@@ -190,8 +195,15 @@ function lopin(x: number, y: number, m: number): void {
 
 // ------------------------------------------------------------------ Intérieur
 
-function hallStyle(c: Chain): 'forge' | 'plant' | 'black' {
-  if (c.stations.every((st) => st.tier === 4)) return 'black';
+function hallStyle(f: Factory): 'forge' | 'plant' | 'black' {
+  let any = false;
+  let black = true;
+  for (const l of f.lines) for (const m of l.slots) {
+    if (!m) continue;
+    any = true;
+    if (m.tier !== 4) black = false;
+  }
+  if (any && black) return 'black';
   return S.act <= 1 && S.stats.moves === 0 ? 'forge' : 'plant';
 }
 
@@ -203,8 +215,8 @@ function lightLevel(style: string): number {
   return style === 'black' ? 0 : 1;
 }
 
-function drawRoom(c: Chain, ci: number): void {
-  const style = hallStyle(c);
+function drawRoom(f: Factory, fi: number): void {
+  const style = hallStyle(f);
   const amb = ambient(S.t);
   const lights = lightLevel(style);
   // mur
@@ -224,7 +236,7 @@ function drawRoom(c: Chain, ci: number): void {
   ctx.strokeStyle = style === 'forge' ? 'rgba(0,0,0,.25)' : 'rgba(0,0,0,.16)';
   ctx.lineWidth = 0.6;
   if (style === 'forge') {
-    for (let y = 8, r = 0; y < FLOOR; y += 8, r++) {
+    for (let y = 8, r = 0; y < 100; y += 8, r++) {
       ctx.beginPath();
       ctx.moveTo(0, y);
       ctx.lineTo(HALL_W, y);
@@ -240,7 +252,7 @@ function drawRoom(c: Chain, ci: number): void {
     for (let x = 0; x < HALL_W; x += 25) {
       ctx.beginPath();
       ctx.moveTo(x, 0);
-      ctx.lineTo(x, FLOOR);
+      ctx.lineTo(x, 100);
       ctx.stroke();
     }
   }
@@ -263,7 +275,6 @@ function drawRoom(c: Chain, ci: number): void {
     ctx.fillStyle = `rgba(255,255,255,${0.1 + 0.25 * amb})`;
     ctx.fillRect(x + 3, 14, 4, 38);
     if (amb < 0.3 && style !== 'black') {
-      // étoiles
       ctx.fillStyle = 'rgba(255,255,255,.7)';
       for (let k = 0; k < 3; k++) ctx.fillRect(x + ((k * 17 + i * 11) % 50) + 2, 15 + ((k * 13 + i * 7) % 16), 1, 1);
     }
@@ -277,28 +288,28 @@ function drawRoom(c: Chain, ci: number): void {
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(x, 69);
-    ctx.lineTo(x, 76);
+    ctx.lineTo(x, 74);
     ctx.stroke();
     ctx.fillStyle = '#5b6068';
     ctx.beginPath();
-    ctx.moveTo(x - 8, 82);
-    ctx.lineTo(x - 3, 76);
-    ctx.lineTo(x + 3, 76);
-    ctx.lineTo(x + 8, 82);
+    ctx.moveTo(x - 7, 79);
+    ctx.lineTo(x - 3, 74);
+    ctx.lineTo(x + 3, 74);
+    ctx.lineTo(x + 7, 79);
     ctx.fill();
     if (lights > 0.01) {
-      const a = (0.12 + 0.16 * (1 - amb)) * lights;
-      const lg = ctx.createRadialGradient(x, 84, 2, x, 190, 120);
+      const a = (0.1 + 0.14 * (1 - amb)) * lights;
+      const lg = ctx.createRadialGradient(x, 80, 2, x, 220, 170);
       lg.addColorStop(0, `rgba(255,224,160,${a})`);
       lg.addColorStop(1, 'rgba(255,224,160,0)');
       ctx.fillStyle = lg;
       ctx.beginPath();
-      ctx.moveTo(x - 6, 82);
-      ctx.lineTo(x + 6, 82);
-      ctx.lineTo(x + 46, FLOOR);
-      ctx.lineTo(x - 46, FLOOR);
+      ctx.moveTo(x - 6, 79);
+      ctx.lineTo(x + 6, 79);
+      ctx.lineTo(x + 40, FLOOR);
+      ctx.lineTo(x - 40, FLOOR);
       ctx.fill();
-      glowDot(x, 82, 2.2, '255,226,170', 0.85 * lights);
+      glowDot(x, 79, 2, '255,226,170', 0.85 * lights);
     }
   }
   // plaques de poste
@@ -307,10 +318,24 @@ function drawRoom(c: Chain, ci: number): void {
   ctx.textBaseline = 'middle';
   for (let s = 0; s < 4; s++) {
     ctx.fillStyle = style === 'black' ? '#1b1e22' : '#d8d2c2';
-    rr(SX[s] - 26, 88, 52, 11, 1.5);
+    rr(SX[s] - 26, 83, 52, 11, 1.5);
     ctx.fill();
     ctx.fillStyle = style === 'black' ? '#4fd8ff' : '#2a2620';
-    ctx.fillText(STATION_NAMES[s], SX[s], 93.8);
+    ctx.fillText(STATION_NAMES[s], SX[s], 88.8);
+  }
+  // allées des chaînes : une bande de sol par rangée, numérotée
+  for (let l = 0; l < f.lines.length; l++) {
+    const y = LY[l] + ROW_BASE;
+    ctx.fillStyle = style === 'black' ? 'rgba(79,216,255,.06)' : 'rgba(0,0,0,.22)';
+    ctx.fillRect(0, y - 2, HALL_W, 7);
+    ctx.fillStyle = style === 'black' ? '#1d6c80' : 'rgba(242,183,5,.55)';
+    ctx.fillRect(0, y + 5, HALL_W, 1);
+    ctx.fillStyle = 'rgba(0,0,0,.55)';
+    rr(3, LY[l] - 6, 16, 12, 2);
+    ctx.fill();
+    ctx.fillStyle = f.lines[l].slots.some(Boolean) ? '#ffb02e' : 'rgba(255,176,46,.35)';
+    ctx.font = '8px "Share Tech Mono", monospace';
+    ctx.fillText(`C${l + 1}`, 11, LY[l] + 0.5);
   }
   // sol
   const fg = ctx.createLinearGradient(0, FLOOR, 0, HALL_H);
@@ -324,11 +349,11 @@ function drawRoom(c: Chain, ci: number): void {
   for (let x = 0; x < HALL_W; x += 40) ctx.fillRect(x, FLOOR + 4, 1, HALL_H - FLOOR - 4);
   // porte
   ctx.fillStyle = '#22252a';
-  ctx.fillRect(374, 206, 26, FLOOR - 206);
+  ctx.fillRect(374, FLOOR - 64, 26, 64);
   ctx.fillStyle = style === 'black' ? '#2a2e34' : '#6d737b';
-  ctx.fillRect(377, 209, 23, FLOOR - 209);
+  ctx.fillRect(377, FLOOR - 61, 23, 61);
   ctx.strokeStyle = 'rgba(0,0,0,.25)';
-  for (let y = 212; y < FLOOR; y += 5) {
+  for (let y = FLOOR - 58; y < FLOOR; y += 5) {
     ctx.beginPath();
     ctx.moveTo(377, y);
     ctx.lineTo(400, y);
@@ -336,24 +361,21 @@ function drawRoom(c: Chain, ci: number): void {
   }
   // rack de barres
   ctx.fillStyle = '#3a3d42';
-  ctx.fillRect(4, 220, 28, FLOOR - 220);
-  for (let k = 0; k < 6; k++) {
-    ctx.fillStyle = MATERIAL_COLORS[c.material];
-    ctx.fillRect(7, 226 + k * 8, 22, 3);
+  ctx.fillRect(26, FLOOR + 8, 64, 30);
+  for (let k = 0; k < 4; k++) {
+    ctx.fillStyle = MATERIAL_COLORS[f.material];
+    ctx.fillRect(29, FLOOR + 12 + k * 6.5, 58, 3);
     ctx.fillStyle = 'rgba(0,0,0,.3)';
-    ctx.fillRect(7, 228.5 + k * 8, 22, 0.6);
+    ctx.fillRect(29, FLOOR + 14.5 + k * 6.5, 58, 0.6);
   }
-  ctx.fillStyle = '#d8d2c2';
-  ctx.font = '600 6px "Chakra Petch", sans-serif';
-  ctx.fillText('Barres', 18, 214);
-  // numéro de chaîne
-  if (S.chains.length > 1) {
+  // numéro d'usine
+  if (S.factories.length > 1) {
     ctx.fillStyle = 'rgba(0,0,0,.55)';
-    rr(6, 64, 40, 13, 2);
+    rr(6, 64, 44, 13, 2);
     ctx.fill();
     ctx.fillStyle = '#ffb02e';
     ctx.font = '8px "Share Tech Mono", monospace';
-    ctx.fillText(`CHAÎNE ${ci + 1}`, 26, 71);
+    ctx.fillText(`USINE ${fi + 1}`, 28, 71);
   }
 }
 
@@ -361,12 +383,42 @@ function mix(a: number[], b: number[], k: number): string {
   return `rgb(${Math.round(a[0] + (b[0] - a[0]) * k)},${Math.round(a[1] + (b[1] - a[1]) * k)},${Math.round(a[2] + (b[2] - a[2]) * k)})`;
 }
 
-function drawUnit(c: Chain, ci: number, s: number, i: number): void {
-  const st = c.stations[s];
-  const u = st.units[i];
+/** Emplacement libre d'une chaîne : un poste à acheter. */
+function drawEmptySlot(l: number, st: number): void {
+  ctx.strokeStyle = 'rgba(255,255,255,.09)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 3]);
+  ctx.strokeRect(SX[st] - 20, LY[l] + 2, 40, 28);
+  ctx.setLineDash([]);
+}
+
+/** Poste sans titulaire : une silhouette en pointillés à la place de l'ouvrier. */
+function drawVacant(l: number, st: number): void {
+  const x = SX[st] - 24;
+  const y = LY[l] + ROW_BASE;
+  ctx.strokeStyle = 'rgba(255,216,74,.45)';
+  ctx.lineWidth = 0.8;
+  ctx.setLineDash([1.5, 1.5]);
+  ctx.beginPath();
+  ctx.arc(x, y - 18, 2.4, 0, TAU);
+  ctx.stroke();
+  rr(x - 3, y - 15, 6, 9, 1.5);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x - 1, y - 6);
+  ctx.lineTo(x - 1, y);
+  ctx.moveTo(x + 1, y - 6);
+  ctx.lineTo(x + 1, y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawMachine(f: Factory, fi: number, l: number, s: number): void {
+  const u = f.lines[l].slots[s]!;
   const x = SX[s];
-  const y = LY[i];
-  const t = st.tier;
+  const y = LY[l];
+  const t = u.tier;
+  const i = l;
   const busy = u.busy && !u.broken && u.service <= 0;
   const T = O.T;
   const sw = busy ? Math.sin(T * 14 + i) : 0;
@@ -555,74 +607,98 @@ function drawUnit(c: Chain, ci: number, s: number, i: number): void {
       ctx.fillRect(x + 21, y + 10, 18, 4);
     }
   }
-  // outillage : une encoche jaune par niveau, visible en permanence
-  for (let k = 0; k < st.tool; k++) {
+  // outillage : jauge jaune sous la machine (50 niveaux), commune à toutes les machines identiques
+  const tool = S.tooling[t]?.[s] ?? 0;
+  if (tool > 0) {
+    ctx.fillStyle = 'rgba(0,0,0,.5)';
+    ctx.fillRect(x - 16, y + 30, 32, 2);
     ctx.fillStyle = '#f2b705';
-    ctx.fillRect(x - 19 + k * 5, y + 29, 3.5, 2.5);
+    ctx.fillRect(x - 16, y + 30, 32 * Math.min(1, tool / TOOL_MAX), 2);
   }
   // pièce en cours
   if (busy && t < 4) {
-    const m = c.material;
+    const m = f.material;
     if (s === 0) lopin(x, y + 5, m);
     else if (s === 1) lopin(x + 1, y + (t ? 14 : 5), m);
     else piece(x - 1, y + (t ? 13 : 4), 3.6, m, s === 2 ? T * 3 : 0);
   } else if (busy) {
-    piece(x, y + 11, 3, c.material, T * 5);
+    piece(x, y + 11, 3, f.material, T * 5);
   }
   // progression
   if (busy && t < 3) {
     ctx.fillStyle = '#16181b';
-    ctx.fillRect(x - 16, y + 35, 32, 2);
+    ctx.fillRect(x - 16, y - 12, 32, 2);
     ctx.fillStyle = '#f2b705';
-    ctx.fillRect(x - 16, y + 35, 32 * clamp(u.prog / stationCycle(S, c, st, s), 0, 1), 2);
+    ctx.fillRect(x - 16, y - 12, 32 * clamp(u.prog / machineCycle(S, f.material, t, s), 0, 1), 2);
+  }
+  // machine qui attend la promotion de son ouvrier
+  if (t > 0 && t < 3 && u.post >= 0) {
+    const w = S.workers.find((k) => k.id === u.post);
+    if (w && w.level < TIER_OPERATOR_LEVEL[t]) glowDot(x + 15, y - 6, 1.8, '255,176,46', Math.sin(T * 4) > 0 ? 0.95 : 0.3);
   }
   // usure (visible avec le superviseur) ; sinon fumée quand une machine fatigue
   if (t > 0 && !u.broken && u.service <= 0) {
     if (S.roles.supervisor && u.wear > 0.25) {
       ctx.fillStyle = '#16181b';
-      ctx.fillRect(x + 19, y + 4, 2.5, 24);
+      ctx.fillRect(x + 19, y + 2, 2.5, 26);
       ctx.fillStyle = u.wear > 0.7 ? '#ff5a4a' : u.wear > 0.5 ? '#ffb02e' : '#57d987';
-      ctx.fillRect(x + 19, y + 4 + 24 * (1 - u.wear), 2.5, 24 * u.wear);
+      ctx.fillRect(x + 19, y + 2 + 26 * (1 - u.wear), 2.5, 26 * u.wear);
     }
     if (u.wear > 0.6 && busy && Math.random() < 0.04 * (u.wear - 0.5) * 4 && !O.reduced) {
-      smoke(hallX(ci) + x + 8, hallY(ci) + y - 4, 'rgba(70,70,74,.45)', 2.2, 1.1);
+      smoke(hallX(fi) + x + 8, hallY(fi) + y - 4, 'rgba(70,70,74,.45)', 2.2, 1.1);
     }
   }
   if (u.broken) {
     const on = Math.sin(T * 8) > 0;
     glowDot(x + 14, y - 4, 2.5, on ? '255,59,43' : '90,21,16', on ? 1 : 0.8);
-    if (Math.random() < 0.12 && !O.reduced) smoke(hallX(ci) + x, hallY(ci) + y);
+    if (Math.random() < 0.12 && !O.reduced) smoke(hallX(fi) + x, hallY(fi) + y);
   }
   if (u.service > 0) {
     ctx.fillStyle = '#ffb02e';
     ctx.font = '7px "Share Tech Mono", monospace';
     ctx.textAlign = 'center';
-    ctx.fillText(`${u.serviceKind === 'repair' ? 'réparation' : 'révision'} ${Math.ceil(u.service)} s`, x, y - 12);
+    ctx.fillText(`${u.serviceKind === 'repair' ? 'réparation' : 'révision'} ${Math.ceil(u.service)} s`, x, y - 16);
     glowDot(x - 14, y - 4, 1.8, '255,176,46', Math.sin(T * 6) > 0 ? 1 : 0.3);
   }
-  if (O.hover && O.hover.hall === ci && O.hover.station === s && O.hover.unit === i) {
+  if (O.hover && O.hover.hall === fi && O.hover.line === l && O.hover.station === s) {
     ctx.strokeStyle = '#ffd84a';
     ctx.lineWidth = 1.2;
     ctx.setLineDash([3, 2]);
-    ctx.strokeRect(x - 24, y - 12, 48, 50);
+    ctx.strokeRect(x - 34, y - 14, 58, 52);
     ctx.setLineDash([]);
   }
 }
 
-let curHall = 0;
-const hallX = (i: number) => hallOrigin(i, S.chains.length).x;
-const hallY = (i: number) => hallOrigin(i, S.chains.length).y;
+const hallX = (i: number) => hallOrigin(i, S.factories.length).x;
+const hallY = (i: number) => hallOrigin(i, S.factories.length).y;
 
-function workerXY(w: Worker): { x: number; y: number; moving: boolean } {
+/** Abscisse de la pile devant le poste st (entre st − 1 et st). */
+const pileX = (st: number) => SX[st] - STEP_X / 2 - 2;
+const rowY = (l: number) => LY[Math.max(0, Math.min(LY.length - 1, l))] + ROW_BASE;
+
+function workerXY(w: Worker): { x: number; y: number; moving: boolean; carrying: boolean } {
+  if (w.kind === 'crank') return { x: posX(-1), y: rowY(w.line), moving: false, carrying: false };
+  const home = w.kind === 'post' ? w.line : w.tl;
+  if (w.state === 'carry' && w.carryTo >= 0) {
+    const k = clamp(1 - w.timer / CARRY_TIME, 0, 1);
+    const from = w.kind === 'post' ? w.station : w.last;
+    const x0 = posX(Math.max(0, from));
+    const x1 = pileX(w.carryTo) + 4;
+    const y0 = rowY(w.kind === 'post' ? w.line : w.carryLine);
+    const y1 = rowY(w.carryLine);
+    // aller puis retour : la pièce est déposée à mi-parcours
+    const go = k < 0.5 ? k * 2 : (1 - k) * 2;
+    return { x: x0 + (x1 - x0) * go, y: y0 + (y1 - y0) * go, moving: true, carrying: k < 0.5 };
+  }
   let pos = w.pos;
   let moving = false;
-  let targetY = FLOOR + 14;
   if (w.state === 'walk' && w.walkTotal > 0) {
-    pos = w.ts - (w.ts - w.from) * (w.timer / w.walkTotal);
+    const target = w.kind === 'post' ? w.station : w.ts;
+    pos = target - (target - w.from) * (w.timer / w.walkTotal);
     moving = true;
   }
-  if ((w.state === 'walk' || w.state === 'work') && w.tu >= 0) targetY = LY[w.tu] + 34;
-  return { x: posX(pos), y: targetY, moving };
+  if (w.kind === 'poly' && home < 0) return { x: posX(pos), y: FLOOR + 22, moving, carrying: false };
+  return { x: posX(pos), y: rowY(home), moving, carrying: false };
 }
 
 function drawWorker(w: Worker, idx: number, dt: number): void {
@@ -633,7 +709,7 @@ function drawWorker(w: Worker, idx: number, dt: number): void {
     r = { x: p.x, y: p.y, anim: Math.random() * 6 };
     WPOS.set(w.id, r);
   }
-  const idleOff = w.state === 'idle' ? ((idx % 5) - 2) * 5 : 0;
+  const idleOff = w.kind === 'poly' && w.state === 'idle' ? ((idx % 5) - 2) * 6 : 0;
   r.x = p.x + idleOff;
   r.y += (p.y - r.y) * (1 - Math.exp(-dt * 10));
   r.anim += dt * 6 * (O.rev > 0.5 ? 1.8 : 1);
@@ -653,17 +729,23 @@ function drawWorker(w: Worker, idx: number, dt: number): void {
   ctx.moveTo(x + 1, y - 7);
   ctx.lineTo(x + 1 - step, y);
   ctx.stroke();
+  // blouse : couleur du niveau ; les polyvalents portent un gilet rayé
   const coat = ['#7a5c3e', '#7a5c3e', '#2f5fa8', '#c4621f', '#2b8a5a'][w.level];
   ctx.fillStyle = coat;
   rr(x - 3, y - 15, 6, 9, 1.5);
   ctx.fill();
-  if (w.level >= 2) {
+  if (w.kind === 'poly') {
+    ctx.fillStyle = '#f2b705';
+    ctx.fillRect(x - 3, y - 13, 6, 1);
+    ctx.fillRect(x - 3, y - 10, 6, 1);
+  } else if (w.level >= 2) {
     ctx.fillStyle = 'rgba(255,255,255,.8)';
     ctx.fillRect(x - 3, y - 11, 6, 0.8);
   }
   ctx.strokeStyle = '#e7b892';
   ctx.lineWidth = 1.3;
-  const sw = w.state === 'work' ? Math.sin(r.anim * 2.4) * 3 : 0;
+  let sw = w.state === 'work' ? Math.sin(r.anim * 2.4) * 3 : 0;
+  if (w.kind === 'crank' && w.state === 'work') sw = Math.sin(O.T * 6) * 3;
   ctx.beginPath();
   ctx.moveTo(x + 2, y - 13);
   ctx.lineTo(x + 6, y - 10 + sw);
@@ -678,22 +760,39 @@ function drawWorker(w: Worker, idx: number, dt: number): void {
   ctx.arc(x, y - 18.6, 2.6, Math.PI, 0);
   ctx.fill();
   ctx.fillRect(x - 3, y - 19, 6.6, 0.8);
-  if (w.state === 'walk' && w.ts > 0) lopin(x + 6, y - 9, S.chains[w.chain].material);
+  // formations au niveau : de petits points au-dessus de la tête
+  if (w.trainings > 0 && w.kind !== 'crank') {
+    for (let k = 0; k < w.trainings; k++) {
+      ctx.fillStyle = '#ffd84a';
+      ctx.fillRect(x - 5 + k * 2.2, y - 23.5, 1.4, 1.4);
+    }
+  }
+  if (p.carrying) {
+    const f = S.factories[w.factory];
+    if (w.carryTo === 1) lopin(x + 5, y - 10, f.material);
+    else piece(x + 5, y - 10, 2.6, f.material, 0);
+  }
   // fatigue visible : une goutte de sueur au-dessus des ouvriers épuisés
   if (S.act >= 2 && w.morale < 0.45) {
     const bob = O.reduced ? 0 : Math.sin(r.anim) * 0.8;
     ctx.fillStyle = '#7fc4ff';
     ctx.beginPath();
-    ctx.moveTo(x + 4, y - 24 + bob);
-    ctx.quadraticCurveTo(x + 6.5, y - 20 + bob, x + 4, y - 19 + bob);
-    ctx.quadraticCurveTo(x + 1.5, y - 20 + bob, x + 4, y - 24 + bob);
+    ctx.moveTo(x + 4, y - 28 + bob);
+    ctx.quadraticCurveTo(x + 6.5, y - 24 + bob, x + 4, y - 23 + bob);
+    ctx.quadraticCurveTo(x + 1.5, y - 24 + bob, x + 4, y - 28 + bob);
     ctx.fill();
   }
+  if (w.rest > 0) {
+    ctx.fillStyle = 'rgba(200,220,255,.8)';
+    ctx.font = '6px "Share Tech Mono", monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('pause', x, y - 27);
+  }
   if (w.name === 'Marcel' || (O.hover && O.hover.worker === w.id)) {
-    ctx.fillStyle = 'rgba(255,255,255,.75)';
+    ctx.fillStyle = 'rgba(255,255,255,.8)';
     ctx.font = '6px "Chakra Petch", sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(w.name, x, y - 25);
+    ctx.fillText(w.name, x, y - 27);
   }
   if (O.hover && O.hover.worker === w.id) {
     ctx.strokeStyle = '#ffd84a';
@@ -704,27 +803,68 @@ function drawWorker(w: Worker, idx: number, dt: number): void {
   }
 }
 
-function drawBuffers(c: Chain, ci: number): void {
-  const m = c.material;
-  for (let s = 1; s < 4; s++) {
-    const x = (SX[s - 1] + SX[s]) / 2;
-    const n = c.buf[s];
-    for (let k = 0; k < Math.min(n, BUFFER_CAP); k++) {
-      const cx = x - 6 + (k % 3) * 6;
-      const cy = FLOOR + 12 - Math.floor(k / 3) * 4.5;
-      if (s === 1) lopin(cx, cy, m);
-      else piece(cx, cy, 2.7, m, 0);
-    }
-    if (n >= BUFFER_CAP) {
-      ctx.fillStyle = '#ff5a4a';
-      ctx.font = '7px "Share Tech Mono", monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText('plein', x, FLOOR + 24);
-    }
+/** Convoyeur à manivelle d'une chaîne : la bande défile quand l'ouvrier tourne la manivelle. */
+function drawConveyor(line: Line, l: number): void {
+  if (!line.conveyor) return;
+  const active = conveyorActive(S, line);
+  const y = rowY(l) - 1;
+  const x0 = CRANK_X + 6;
+  const x1 = SX[3] + 24;
+  ctx.fillStyle = '#2a2c30';
+  ctx.fillRect(x0, y - 1, x1 - x0, 5);
+  ctx.fillStyle = '#4a4e55';
+  ctx.fillRect(x0, y - 1, x1 - x0, 1);
+  // tasseaux qui défilent
+  const off = active && !O.reduced ? (O.T * 18) % 8 : 0;
+  ctx.fillStyle = active ? '#8a8f97' : '#5a5e65';
+  for (let x = x0 + off; x < x1; x += 8) ctx.fillRect(x, y + 1, 1.2, 2);
+  // pieds
+  ctx.fillStyle = '#1d1f23';
+  for (let x = x0 + 10; x < x1; x += 60) ctx.fillRect(x, y + 4, 2, 4);
+  // manivelle
+  const a = active && !O.reduced ? O.T * 6 : 0.8;
+  ctx.strokeStyle = '#9aa1aa';
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.arc(CRANK_X, y - 6, 5, 0, TAU);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(CRANK_X, y - 6);
+  ctx.lineTo(CRANK_X + Math.cos(a) * 5, y - 6 + Math.sin(a) * 5);
+  ctx.stroke();
+  ctx.fillStyle = '#c4621f';
+  ctx.fillRect(CRANK_X + Math.cos(a) * 5 - 1, y - 7 + Math.sin(a) * 5, 2.5, 2.5);
+  ctx.fillStyle = '#3a3d42';
+  ctx.fillRect(CRANK_X - 1.5, y - 6, 3, 10);
+  if (line.crank < 0 && crankUseful(line)) {
+    // personne à la manivelle : silhouette en pointillés
+    ctx.save();
+    ctx.translate(posX(-1) - (SX[0] - 24), 0);
+    drawVacant(l, 0);
+    ctx.restore();
   }
+}
+
+function drawBuffers(f: Factory, fi: number): void {
+  const m = f.material;
+  f.lines.forEach((line, l) => {
+    const base = rowY(l) - 3;
+    for (let s = 1; s < 4; s++) {
+      const n = line.buf[s];
+      if (n <= 0) continue;
+      const x = pileX(s);
+      for (let k = 0; k < Math.min(n, BUFFER_CAP); k++) {
+        const cx = x - 6 + (k % 3) * 6;
+        const cy = base - Math.floor(k / 3) * 4.5;
+        if (s === 1) lopin(cx, cy, m);
+        else piece(cx, cy, 2.7, m, 0);
+      }
+      if (n >= BUFFER_CAP) glowDot(x + 9, base - 10, 1.4, '255,90,74', 0.9);
+    }
+  });
   // caisse de produits finis
-  const x = 356;
-  const y = FLOOR + 4;
+  const x = 330;
+  const y = FLOOR + 10;
   ctx.fillStyle = '#8a6440';
   ctx.fillRect(x - 14, y, 28, 16);
   ctx.strokeStyle = '#5a3f24';
@@ -736,41 +876,50 @@ function drawBuffers(c: Chain, ci: number): void {
   ctx.stroke();
   const n = Math.min(S.stock[m], 6);
   for (let k = 0; k < n; k++) piece(x - 9 + k * 3.6, y - 2, 2.4, m, k);
-  if (ci === 0) {
+  if (fi === 0) {
     ctx.fillStyle = '#d8d2c2';
     ctx.font = '600 7px "Share Tech Mono", monospace';
-    ctx.textAlign = 'center';
+    ctx.textAlign = 'right';
     const total = S.stock.reduce((a, b) => a + b, 0);
-    ctx.fillText(`${total} prêts`, x, y + 24);
+    ctx.fillText(`${total} prêts`, x - 18, y + 9);
   }
 }
 
-function drawOverlay(c: Chain): void {
+/** Rapport du contremaître : cadence de chaque poste, goulot de chaque chaîne. */
+function drawOverlay(f: Factory, fi: number): void {
   if (!S.roles.foreman) return;
-  const caps = stationCapacities(S, c);
-  const b = bottleneckOf(S, c);
+  const est = estimateFactory(S, fi);
   ctx.font = '600 7px "Share Tech Mono", monospace';
   ctx.textAlign = 'center';
-  for (let s = 0; s < 4; s++) {
-    const x = SX[s];
-    ctx.fillStyle = 'rgba(10,11,9,.82)';
-    rr(x - 27, 74, 54, 11, 2);
-    ctx.fill();
-    ctx.fillStyle = s === b ? '#ff6b5a' : '#ffb02e';
-    ctx.fillText((s === b ? 'GOULOT ' : '') + caps[s].toFixed(2).replace('.', ',') + '/s', x, 79.8);
-  }
+  ctx.textBaseline = 'middle';
+  f.lines.forEach((line, l) => {
+    const b = est.lineBottleneck[l];
+    line.slots.forEach((m, s) => {
+      if (!m) return;
+      const x = SX[s];
+      const y = LY[l] - 19;
+      const r = est.rate[l][s];
+      const slow = s === b;
+      ctx.fillStyle = 'rgba(10,11,9,.82)';
+      rr(x - 17, y - 5, 34, 10, 2);
+      ctx.fill();
+      ctx.fillStyle = r <= 0 ? '#8a8f97' : slow ? '#ff6b5a' : '#ffb02e';
+      ctx.fillText(r <= 0 ? 'arrêt' : `${r.toFixed(2).replace('.', ',')}/s`, x, y + 0.5);
+    });
+  });
 }
 
 function drawRoles(): void {
   // L'encadrement se tient près de la porte du premier hall.
   const order: [keyof GameState['roles'], string][] = [
-    ['foreman', '#e9ecef'], ['supervisor', '#d0e4ff'], ['hr', '#ffd0e0'], ['logistics', '#ffe6a8'], ['sales', '#c8f0d0'], ['controller', '#e0d0ff'],
+    ['foreman', '#e9ecef'], ['supervisor', '#d0e4ff'], ['hr', '#ffd0e0'], ['methods', '#ffd8a8'], ['logistics', '#ffe6a8'],
+    ['sales', '#c8f0d0'], ['controller', '#e0d0ff'],
   ];
   let k = 0;
   for (const [id, col] of order) {
     if (!S.roles[id]) continue;
     const x = 368 - k * 9;
-    const y = FLOOR - 4;
+    const y = HALL_H - 6;
     ctx.fillStyle = col;
     rr(x - 3, y - 15, 6, 9, 1.5);
     ctx.fill();
@@ -792,27 +941,27 @@ function drawRoles(): void {
   }
 }
 
-function drawInterior(c: Chain, ci: number, dt: number): void {
-  drawRoom(c, ci);
-  for (let s = 0; s < 4; s++) {
-    const st = c.stations[s];
-    for (let i = 0; i < st.units.length; i++) drawUnit(c, ci, s, i);
-    for (let i = st.units.length; i < MAX_UNITS; i++) {
-      ctx.strokeStyle = 'rgba(255,255,255,.07)';
-      ctx.setLineDash([3, 3]);
-      ctx.strokeRect(SX[s] - 20, LY[i] + 6, 40, 28);
-      ctx.setLineDash([]);
-    }
-  }
-  drawBuffers(c, ci);
-  if (ci === 0) drawRoles();
-  const ws = S.workers.filter((w) => w.chain === ci);
+function drawInterior(f: Factory, fi: number, dt: number): void {
+  drawRoom(f, fi);
+  f.lines.forEach((line, l) => {
+    drawConveyor(line, l);
+    line.slots.forEach((m, s) => {
+      if (!m) drawEmptySlot(l, s);
+      else {
+        drawMachine(f, fi, l, s);
+        if (m.tier < 3 && m.post < 0) drawVacant(l, s);
+      }
+    });
+  });
+  drawBuffers(f, fi);
+  if (fi === 0) drawRoles();
+  const ws = S.workers.filter((w) => w.factory === fi);
   ws.sort((a, b) => (WPOS.get(a.id)?.y ?? 0) - (WPOS.get(b.id)?.y ?? 0));
   ws.forEach((w, k) => drawWorker(w, k, dt));
-  drawOverlay(c);
+  drawOverlay(f, fi);
   // pénombre de nuit
   const amb = ambient(S.t);
-  const style = hallStyle(c);
+  const style = hallStyle(f);
   const lights = lightLevel(style);
   const dark = style === 'black' ? 0.55 : (1 - amb) * 0.18 + (1 - lights) * 0.6;
   if (dark > 0.01) {
@@ -823,8 +972,8 @@ function drawInterior(c: Chain, ci: number, dt: number): void {
 
 // ------------------------------------------------------------------ Extérieur
 
-function drawExterior(c: Chain, ci: number, panels: number): void {
-  const style = hallStyle(c);
+function drawExterior(f: Factory, ci: number, panels: number): void {
+  const style = hallStyle(f);
   const amb = ambient(S.t);
   const lights = lightLevel(style);
   const wall = style === 'black' ? '#15171b' : style === 'forge' ? '#7a4a36' : '#8b939c';
@@ -862,7 +1011,7 @@ function drawExterior(c: Chain, ci: number, panels: number): void {
     ctx.stroke();
   }
   // fenêtres éclairées
-  const working = c.stations.some((st) => st.units.some((u) => u.busy));
+  const working = f.lines.some((l) => l.slots.some((m) => m && m.busy));
   for (let k = 0; k < 6; k++) {
     const x = 24 + k * 62;
     const lit = (1 - amb) * 0.8 * lights * (working ? 1 : 0.4);
@@ -888,7 +1037,7 @@ function drawExterior(c: Chain, ci: number, panels: number): void {
     ctx.stroke();
   }
   // bandeau matériau et numéro
-  ctx.fillStyle = MATERIAL_COLORS[c.material];
+  ctx.fillStyle = MATERIAL_COLORS[f.material];
   ctx.fillRect(0, 74, HALL_W, 10);
   ctx.fillStyle = 'rgba(0,0,0,.65)';
   rr(150, 86, 100, 20, 3);
@@ -897,7 +1046,7 @@ function drawExterior(c: Chain, ci: number, panels: number): void {
   ctx.font = '14px "Share Tech Mono", monospace';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(`CHAÎNE ${ci + 1}`, 200, 96.5);
+  ctx.fillText(`USINE ${ci + 1}`, 200, 96.5);
   // cheminée et fumée
   if (style !== 'black') {
     ctx.fillStyle = '#5a4a40';
@@ -905,17 +1054,25 @@ function drawExterior(c: Chain, ci: number, panels: number): void {
     if (working && Math.random() < 0.25 && !O.reduced) smoke(hallX(ci) + 339, hallY(ci) - 12, 'rgba(200,200,205,.35)', 6, 3);
   }
   // voyant de panne
-  const broken = c.stations.some((st) => st.units.some((u) => u.broken));
+  const broken = f.lines.some((l) => l.slots.some((m) => m && m.broken));
   if (broken) glowDot(380, 70, 6, '255,59,43', Math.sin(O.T * 8) > 0 ? 1 : 0.3);
   else glowDot(380, 70, 4, working ? '90,255,150' : '255,176,46', 0.7);
-  if (robotChain(c)) glowDot(20, 70, 3, '79,216,255', 0.6);
+  if (robotFactory(f)) glowDot(20, 70, 3, '79,216,255', 0.6);
+  // une rangée de fenêtres basses par chaîne équipée
+  f.lines.forEach((l, k) => {
+    const n = l.slots.filter(Boolean).length;
+    for (let j = 0; j < 4; j++) {
+      ctx.fillStyle = j < n ? (l.slots.some((m) => m && m.busy) ? '#ffcf6b' : '#8a7a50') : 'rgba(0,0,0,.35)';
+      ctx.fillRect(16 + j * 9, 196 + k * 12, 6, 7);
+    }
+  });
   // sol
   ctx.fillStyle = 'rgba(0,0,0,.25)';
   ctx.fillRect(-10, FLOOR + 20, HALL_W + 20, 6);
 }
 
 function drawGround(top: number): void {
-  const n = S.chains.length;
+  const n = S.factories.length;
   const b = siteBounds(n);
   const amb = ambient(S.t);
   ctx.fillStyle = mix([28, 32, 30], [96, 104, 96], amb);
@@ -1039,9 +1196,9 @@ const ROOF_SLOTS = 12;
 
 
 function solarSplit(): { perHall: number[]; ground: number } {
-  const n = S.chains.length;
+  const n = S.factories.length;
   const total = S.energy.solar;
-  const perHall = S.chains.map((_, i) => Math.min(ROOF_SLOTS, Math.floor(total / n) + (i < total % n ? 1 : 0)));
+  const perHall = S.factories.map((_, i) => Math.min(ROOF_SLOTS, Math.floor(total / n) + (i < total % n ? 1 : 0)));
   const used = perHall.reduce((a, b) => a + b, 0);
   return { perHall, ground: total - used };
 }
@@ -1072,7 +1229,7 @@ function solarPanel(x: number, y: number, w: number, h: number): void {
 
 /** Toit en coupe au-dessus d'un hall (vue intérieure), avec ses panneaux. */
 function drawRoof(ci: number, panels: number): void {
-  const style = hallStyle(S.chains[ci]);
+  const style = hallStyle(S.factories[ci]);
   ctx.fillStyle = style === 'black' ? '#0e1013' : '#4b5259';
   for (let k = 0; k < 5; k++) {
     ctx.beginPath();
@@ -1091,7 +1248,7 @@ function drawRoof(ci: number, panels: number): void {
 }
 
 function drawTurbines(): void {
-  const n = S.chains.length;
+  const n = S.factories.length;
   const total = S.energy.wind;
   const wf = windFactor(S.t);
   for (let i = 0; i < total; i++) {
@@ -1225,7 +1382,7 @@ export function drawScene(t: DrawTarget, s: GameState, cam: Camera, o: SceneOpts
     glow.setTransform(1, 0, 0, 1, 0, 0);
     glow.clearRect(0, 0, cw, ch);
   }
-  const n = s.chains.length;
+  const n = s.factories.length;
   const annex = hasAnnex(s);
   const outdoor = annex || n > 1;
   if (!outdoor) {
@@ -1257,15 +1414,14 @@ export function drawScene(t: DrawTarget, s: GameState, cam: Camera, o: SceneOpts
     const sx = cw / 2 + (o2.x - cam.x) * cam.zoom;
     const sy = ch / 2 + (o2.y - cam.y) * cam.zoom;
     if (sx > cw || sy > ch || sx + hallPx < 0 || sy + HALL_H * cam.zoom < -60 * cam.zoom) continue;
-    curHall = ci;
     base(o2.x, o2.y);
     if (interior && annex) drawRoof(ci, split.perHall[ci]);
     ctx.save();
     ctx.beginPath();
     ctx.rect(-2, interior ? 0 : -40, HALL_W + 4, HALL_H + (interior ? 0 : 60));
     ctx.clip();
-    if (interior) drawInterior(s.chains[ci], ci, dt);
-    else drawExterior(s.chains[ci], ci, annex ? split.perHall[ci] : 0);
+    if (interior) drawInterior(s.factories[ci], ci, dt);
+    else drawExterior(s.factories[ci], ci, annex ? split.perHall[ci] : 0);
     ctx.restore();
     if (o.selected === ci && n > 1) {
       ctx.strokeStyle = '#f2b705';
@@ -1273,7 +1429,6 @@ export function drawScene(t: DrawTarget, s: GameState, cam: Camera, o: SceneOpts
       ctx.strokeRect(-3, interior ? -3 : 17, HALL_W + 6, interior ? HALL_H + 6 : HALL_H - 14);
     }
   }
-  void curHall;
   // particules
   base(0, 0);
   for (const p of particles) {
@@ -1309,19 +1464,20 @@ export function drawScene(t: DrawTarget, s: GameState, cam: Camera, o: SceneOpts
 
 /** Élément sous le curseur (coordonnées écran en pixels du canvas). */
 export function hitTest(s: GameState, cam: Camera, px: number, py: number, cw: number, ch: number): Hover | null {
-  const n = s.chains.length;
+  const n = s.factories.length;
   const w = cam.toWorld(px, py, cw, ch);
-  for (let ci = 0; ci < n; ci++) {
-    const o = hallOrigin(ci, n);
+  for (let fi = 0; fi < n; fi++) {
+    const o = hallOrigin(fi, n);
     const lx = w.x - o.x;
     const ly = w.y - o.y;
     if (lx < 0 || ly < 0 || lx > HALL_W || ly > HALL_H) continue;
-    if (HALL_W * cam.zoom < INTERIOR_PX) return { hall: ci, station: -1, unit: -1, worker: -1 };
+    const none = { hall: fi, line: -1, station: -1, worker: -1 };
+    if (HALL_W * cam.zoom < INTERIOR_PX) return none;
     // ouvriers d'abord
     let best = -1;
     let bd = 9;
     for (const wk of s.workers) {
-      if (wk.chain !== ci || wk.state === 'train') continue;
+      if (wk.factory !== fi || wk.state === 'train') continue;
       const r = WPOS.get(wk.id);
       if (!r) continue;
       const d = Math.hypot(lx - r.x, ly - (r.y - 10));
@@ -1330,23 +1486,25 @@ export function hitTest(s: GameState, cam: Camera, px: number, py: number, cw: n
         best = wk.id;
       }
     }
-    if (best >= 0) return { hall: ci, station: -1, unit: -1, worker: best };
-    for (let st = 0; st < 4; st++) {
-      if (Math.abs(lx - SX[st]) > 26) continue;
-      for (let i = 0; i < s.chains[ci].stations[st].units.length; i++) {
-        if (ly >= LY[i] - 12 && ly < LY[i] + 38) return { hall: ci, station: st, unit: i, worker: -1 };
+    if (best >= 0) return { ...none, worker: best };
+    const f = s.factories[fi];
+    for (let l = 0; l < f.lines.length; l++) {
+      if (ly < LY[l] - 14 || ly >= LY[l] + ROW_BASE + 8) continue;
+      if (lx < CRANK_X + 10) return f.lines[l].conveyor ? { ...none, line: l, station: -2 } : { ...none, line: l };
+      for (let st = 0; st < 4; st++) {
+        if (Math.abs(lx - (SX[st] - 6)) <= STEP_X / 2) return { ...none, line: l, station: st };
       }
-      if (ly > FLOOR - 10) return { hall: ci, station: st, unit: -1, worker: -1 };
+      return { ...none, line: l };
     }
-    return { hall: ci, station: -1, unit: -1, worker: -1 };
+    return none;
   }
   return null;
 }
 
-/** Position écran (px canvas) d'un point d'un hall, pour placer les effets. */
-export function worldOfStation(s: GameState, ci: number, st: number, unit: number): { x: number; y: number } {
-  const o = hallOrigin(ci, s.chains.length);
-  return { x: o.x + SX[st], y: o.y + LY[Math.max(0, unit)] + 4 };
+/** Position (monde) d'un poste d'une chaîne, pour placer les effets. */
+export function worldOfStation(s: GameState, fi: number, l: number, st: number): { x: number; y: number } {
+  const o = hallOrigin(fi, s.factories.length);
+  return { x: o.x + SX[Math.max(0, st)], y: o.y + LY[Math.max(0, l)] + 4 };
 }
 
 export function materialColor(m: number): string {

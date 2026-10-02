@@ -2,10 +2,10 @@
  * Onglet Données : le tableau de bord commence vide et se remplit avec les rôles recrutés.
  * Graphiques de télémétrie repris de la v5 (survol pour lire une valeur).
  */
-import { MATERIALS, ROLES, WORKER_SALARY } from '../data/balance';
+import { MATERIALS, ROLES } from '../data/balance';
 import { G } from '../game';
-import { bottleneckOf, stationCapacities } from '../sim/analysis';
-import { HIST } from '../sim/engine';
+import { estimateFactory } from '../sim/analysis';
+import { HIST, salaryOf } from '../sim/engine';
 import { priceMult } from '../sim/formulas';
 import type { GameState } from '../sim/types';
 import { fmt, fmtP, mmss, pct } from './format';
@@ -252,35 +252,40 @@ export function dataView(s: GameState): View {
   const k: Record<string, string> = {};
   const roles = s.roles;
   const any = Object.values(roles).some(Boolean);
-  const sig = `D${Object.values(roles).map(Number).join('')}|${range}|${s.chains.length}|${s.act}|${s.energy.solar + s.energy.wind + s.energy.battery > 0}`;
+  const sig = `D${Object.values(roles).map(Number).join('')}|${range}|${s.factories.length}|${s.act}|${s.energy.solar + s.energy.wind + s.energy.battery > 0}`;
   let h = '';
   if (!any) h += '<div class="note">Sans encadrement, vous ne voyez que la caisse et le stock : l’usine se lit aux tas de pièces. Chaque rôle recruté (onglet Équipe) ajoute ses données ici.</div>';
   else h += `<div class="seg" style="margin:4px 2px 10px"><button type="button" data-range="15" class="${range === '15' ? 'on' : ''}">15 min</button><button type="button" data-range="240" class="${range === '240' ? 'on' : ''}">4 h</button></div>`;
   // Contremaître
   if (roles.foreman) {
     h += `<div class="sec">${ROLE_NAMES.foreman}<span>cadences</span></div><div class="card col">`;
-    s.chains.forEach((c, ci) => {
-      const caps = stationCapacities(s, c);
-      const b = bottleneckOf(s, c);
-      h += kv(`Chaîne ${ci + 1} · goulot : ${STATION_NAMES[b].toLowerCase()}`, `fc${ci}`);
-      k[`fc${ci}`] = caps.map((x) => fmtP(x)).join(' / ');
+    s.factories.forEach((f, fi) => {
+      const e = estimateFactory(s, fi);
+      h += kv(`Usine ${fi + 1} · goulot : ${STATION_NAMES[e.bottleneck].toLowerCase()}`, `fc${fi}`);
+      k[`fc${fi}`] = `${fmtP(e.x)} pièce/s · postes ${e.cap.map((x) => fmtP(x)).join(' / ')}`;
+      void f;
     });
     h += '</div>' + chart('prod');
   }
   // Superviseur
   if (roles.supervisor) {
     h += `<div class="sec">${ROLE_NAMES.supervisor}<span>occupation, attente, usure</span></div><div class="card col">`;
-    s.chains.forEach((c, ci) => {
+    s.factories.forEach((f, fi) => {
       let busy = 0;
       let units = 0;
       let wearMax = 0;
-      for (const st of c.stations) for (const u of st.units) {
-        units++;
-        if (u.busy) busy++;
-        if (st.tier > 0) wearMax = Math.max(wearMax, u.wear);
+      const wait = [0, 0, 0, 0];
+      for (const l of f.lines) {
+        for (let st = 1; st < 4; st++) wait[st] += l.buf[st];
+        for (const u of l.slots) {
+          if (!u) continue;
+          units++;
+          if (u.busy) busy++;
+          if (u.tier > 0) wearMax = Math.max(wearMax, u.wear);
+        }
       }
-      h += kv(`Chaîne ${ci + 1}`, `sv${ci}`);
-      k[`sv${ci}`] = `occupé ${pct(units ? busy / units : 0)} · attente ${c.buf.slice(1).join('/')} · usure max ${pct(wearMax)}`;
+      h += kv(`Usine ${fi + 1}`, `sv${fi}`);
+      k[`sv${fi}`] = `occupé ${pct(units ? busy / units : 0)} · attente ${wait.slice(1).join('/')} · usure max ${pct(wearMax)}`;
     });
     h += '</div>' + chart('idle');
     if (s.energy.solar + s.energy.wind + s.energy.battery > 0 || s.act >= 2) h += chart('nrg');
@@ -299,7 +304,7 @@ export function dataView(s: GameState): View {
     h += kv('Effectif', 'hr1') + kv('Moral moyen', 'hr2') + kv('Masse salariale', 'hr3');
     k.hr1 = [1, 2, 3, 4].filter((l) => lv[l]).map((l) => `${lv[l]} ${LEVEL_PLURAL[l]}`).join(' · ') + (train ? ` · ${train} en formation` : '');
     k.hr2 = pct(s.workers.length ? mor / s.workers.length : 0);
-    k.hr3 = `${fmtP(s.workers.reduce((a, w) => a + WORKER_SALARY[w.level], 0))} €/s`;
+    k.hr3 = `${fmtP(s.workers.reduce((a, w) => a + salaryOf(w), 0))} €/s`;
     h += '</div>' + chart('morale');
   }
   // Logistique

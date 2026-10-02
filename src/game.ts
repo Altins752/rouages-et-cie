@@ -20,7 +20,7 @@ export const G = {
   pointerHeld: false,
   spaceHeld: false,
   tab: 'atelier' as Tab,
-  chain: 0,
+  factory: 0,
   /** Simulation suspendue (écran titre, fin). */
   paused: true,
   started: false,
@@ -72,7 +72,7 @@ export function saveSettings(): void {
 
 export function newGame(): void {
   G.s = createGame((Date.now() % 2147483647) | 1);
-  G.chain = 0;
+  G.factory = 0;
   G.tab = 'atelier';
   G.rev = 0;
   G.finale = null;

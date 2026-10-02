@@ -40,18 +40,20 @@ node ./node_modules/@playwright/test/cli.js install chromium
 
 ## Comment jouer
 
-L'usine est une ligne à quatre postes : **découpe** (barre → lopin), **frappe** (lopin → écrou brut), **taraudage** (filetage), **contrôle** (validation ou rebut). Le débit d'une chaîne est celui de son poste le plus lent, le **goulot** : là où les pièces s'entassent, c'est là que ça coince.
+Une usine compte quatre **chaînes** ; chaque chaîne est une rangée de quatre postes : **découpe** (barre → lopin), **frappe** (lopin → écrou brut), **taraudage** (filetage), **contrôle** (validation ou rebut). Le débit d'une chaîne est celui de son poste le plus lent, le **goulot** : là où les pièces s'entassent, c'est là que ça coince. Une chaîne à qui il manque un poste envoie ses pièces aux chaînes qui l'ont.
 
 Quatre leviers :
 
-- **Personnel** : embaucher (onglet Équipe), former les ouvriers pour conduire des machines. Les ouvriers se répartissent seuls entre les postes.
-- **Technologie** : ajouter des établis ou des machines (4 par poste), améliorer l'outillage (+25 % de vitesse, 3 niveaux), moderniser un poste (mécanique, semi-auto, robotisé, usine noire).
-- **Chaînes** : dupliquer la ligne entière dans un nouveau hall.
+- **Personnel** (onglet Équipe) : chaque manœuvre embauché prend le poste libre le plus utile et n'en change plus. Formez-le (+4 % de cadence par formation) ; après cinq formations, promouvez-le (opérateur, régleur, technicien) pour qu'il conduise une machine plus moderne. Les polyvalents, moins chers et moins productifs, tiennent les postes vacants et relèvent les fatigués. Pour changer quelqu'un de poste : licencier, puis embaucher.
+- **Technologie** (onglet Atelier) : acheter les postes un par un, moderniser une machine à la fois, améliorer l'outillage (50 niveaux, valable pour toutes les machines identiques), poser un convoyeur à manivelle sur une chaîne (sinon les pièces sont portées à la main).
+- **Usines** : bâtir un nouveau hall équipé comme le meilleur.
 - **Matériau** : fonte, acier, laiton, inox, titane, carbure, diamant ; chaque écrou vaut plus, mais s'usine plus lentement.
+
+Les recettes en €/s sont toujours affichées sur le pupitre, à côté de la caisse.
 
 Le clic ne produit rien : il **accélère le temps**. Clic maintenu (ou barre d'espace) : zone verte. Pour la zone rouge, il faut cliquer très vite ; les machines s'usent alors cinq fois plus.
 
-L'information se débloque avec l'encadrement : sans contremaître, vous ne voyez ni cadences ni goulot ; superviseur, RH, logistique, commercial et contrôleur de gestion remplissent peu à peu l'onglet Données et prennent des décisions à votre place.
+L'information se débloque avec l'encadrement : sans contremaître, vous ne voyez ni cadences ni goulot ; avec lui, un rapport signale les postes qui freinent leur chaîne. Superviseur, RH, ingénieur méthodes (modernise selon votre consigne), logistique, commercial et contrôleur de gestion remplissent peu à peu l'onglet Données et prennent des décisions à votre place. Un rôle trop cher se congédie à tout moment.
 
 ### Histoire
 

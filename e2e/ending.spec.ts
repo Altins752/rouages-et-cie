@@ -33,9 +33,9 @@ test.describe('acte IV, fin et bac à sable', () => {
       s.research.tier = 4;
       s.research.materials = [true, true, true, true, true, true, true];
       s.money = 1e9;
-      for (let si = 0; si < 4; si++) while (s.chains[0].stations[si].tier < 4) r.A.modernize(s, 0, si);
+      for (let si = 0; si < 4; si++) while (r.A.modernizeTarget(s, 0, si)) r.A.modernize(s, 0, si);
       r.A.setMaterial(s, 0, 6);
-      s.money = 1.6e9;
+      s.money = 2.1e9;
       s.stats.retrained = 5;
       s.stats.laidOff = 1;
       s.story.seen.act4 = 1;

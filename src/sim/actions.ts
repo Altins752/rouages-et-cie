@@ -3,18 +3,18 @@
  * renvoie un résultat. Aucune action n'accède au DOM.
  */
 import {
-  ACTS, CANTEEN_COST, CONTRACTS, ENERGY, KNOW_HOW, MATERIALS, MAX_UNITS, MAX_WORKERS_PER_CHAIN, PRESTIGE,
-  PROLOGUE, RESEARCH_EXTRA, REPUTATION, ROLES, SANDBOX_ACT, TIER_COUNT, TIER_MIN_ACT, TIER_RESEARCH, TOOL_MAX,
-  WEAR, DOOR_POS,
+  ACTS, CANTEEN_COST, CONTRACTS, ENERGY, KNOW_HOW, LINES, MATERIALS, METHODS, POLY, PRESTIGE, PROLOGUE,
+  RESEARCH_EXTRA, REPUTATION, ROBOT_TIER, ROLES, SANDBOX_ACT, TIER_COUNT, TIER_MIN_ACT, TIER_OPERATOR_LEVEL,
+  TIER_RESEARCH, TOOL_MAX, DOOR_POS,
 } from '../data/balance';
 import type { KnowHowId, RoleId } from '../data/balance';
-import { assignHomes, releaseWorker } from './engine';
+import { machineRank, modernizeMachine, releaseWorker, startCourse } from './engine';
 import {
-  chainValue, knowHow, knowHowCost, knowHowGain, materialOk, modernizeCost, newChainCost, toolCost, trainCost, trainTime,
-  unitPrice,
+  canPromote, canTrain, conveyorCost, crankUseful, factoryValue, knowHow, knowHowCost, knowHowGain, machineCycle, materialOk,
+  modernizeCost, newFactoryCost, promotionCost, toolCost, trainingCost, unitPrice,
 } from './formulas';
-import { newChain, newStation, newUnit, newWorker } from './state';
-import type { Chain, GameState, Worker } from './types';
+import { newFactory, newMachine, newWorker } from './state';
+import type { Factory, GameState, Worker } from './types';
 
 export type Result = { ok: true; cost?: number; info?: string } | { ok: false; reason: string };
 const fail = (reason: string): Result => ({ ok: false, reason });
@@ -26,71 +26,117 @@ function pay(s: GameState, cost: number): boolean {
   return true;
 }
 
-function chainAt(s: GameState, ci: number): Chain | null {
-  return s.chains[ci] ?? null;
-}
-
-function refreshHomes(s: GameState, ci: number): void {
-  if (s.roles.foreman && s.chains[ci]) assignHomes(s, ci);
+function factoryAt(s: GameState, fi: number): Factory | null {
+  return s.factories[fi] ?? null;
 }
 
 // ---------------------------------------------------------------- Personnel
 
-export function hire(s: GameState, ci: number): Result {
-  if (!chainAt(s, ci)) return fail('chaîne');
-  if (s.workers.filter((w) => w.chain === ci).length >= MAX_WORKERS_PER_CHAIN) return fail('complet');
-  s.workers.push(newWorker(s, ci));
-  refreshHomes(s, ci);
-  return ok(0);
+/** Poste libre d'une usine : machine humaine sans titulaire, puis convoyeur sans ouvrier. */
+export interface FreePost {
+  kind: 'post' | 'crank';
+  line: number;
+  station: number;
 }
 
-/** Licencie le dernier arrivé de la chaîne (jamais Marcel), de préférence inactif. */
-export function fire(s: GameState, ci: number, id?: number): Result {
-  const pool = s.workers.filter((w) => w.chain === ci && w.name !== 'Marcel');
-  if (!pool.length) return fail('personne');
-  let w: Worker | undefined = id !== undefined ? pool.find((x) => x.id === id) : undefined;
-  if (!w) w = [...pool].reverse().find((x) => x.state === 'idle') ?? pool[pool.length - 1];
-  releaseWorker(s, w);
-  s.workers.splice(s.workers.indexOf(w), 1);
-  if (s.act >= 3) s.stats.laidOff++;
-  refreshHomes(s, ci);
+/**
+ * Postes libres, du plus utile au moins utile. Avec le contremaître, le poste le plus lent
+ * d'abord ; sans lui, dans l'ordre des chaînes.
+ */
+export function freePosts(s: GameState, fi: number): FreePost[] {
+  const f = s.factories[fi];
+  if (!f) return [];
+  const out: { p: FreePost; score: number }[] = [];
+  f.lines.forEach((line, l) => {
+    line.slots.forEach((m, st) => {
+      if (!m || m.tier >= ROBOT_TIER || m.post >= 0) return;
+      const speed = 1 / machineCycle(s, f.material, m.tier, st);
+      const score = s.roles.foreman ? speed : l * 10 + st;
+      out.push({ p: { kind: 'post', line: l, station: st }, score });
+    });
+  });
+  out.sort((a, b) => a.score - b.score);
+  const cranks: FreePost[] = [];
+  f.lines.forEach((line, l) => {
+    if (crankUseful(line) && line.crank < 0) cranks.push({ kind: 'crank', line: l, station: -1 });
+  });
+  return [...out.map((o) => o.p), ...cranks];
+}
+
+/** Embaucher un manœuvre : il prend le poste libre le plus utile et n'en bougera plus. */
+export function hire(s: GameState, fi: number): Result {
+  const f = factoryAt(s, fi);
+  if (!f) return fail('usine');
+  const p = freePosts(s, fi)[0];
+  if (!p) return fail('aucun poste');
+  const w = newWorker(s, fi, p.kind === 'crank' ? 'crank' : 'post');
+  w.line = p.line;
+  w.station = p.station;
+  if (p.kind === 'crank') f.lines[p.line].crank = w.id;
+  else f.lines[p.line].slots[p.station]!.post = w.id;
+  s.workers.push(w);
   return ok(0, w.name);
 }
 
-export { trainCost, trainTime };
+export function polyCount(s: GameState, fi: number): number {
+  return s.workers.filter((w) => w.factory === fi && w.kind === 'poly' && w.name !== 'Marcel').length;
+}
 
-/** Forme un ouvrier de la chaîne au niveau `level` (depuis level − 1). */
-export function train(s: GameState, ci: number, level: number, id?: number): Result {
-  if (level < 2 || level > 4) return fail('niveau');
-  if (level === 4 && s.act < 3) return fail('acte');
-  if (level === 3 && s.act < 2) return fail('acte');
-  const pool = s.workers.filter((w) => w.chain === ci && w.level === level - 1 && w.state !== 'train');
-  if (!pool.length) return fail('personne');
-  let w = id !== undefined ? pool.find((x) => x.id === id) : undefined;
-  if (!w) w = pool.find((x) => x.state === 'idle') ?? pool[pool.length - 1];
-  const cost = trainCost(s, level);
-  if (!pay(s, cost)) return fail('argent');
+/** Embaucher un polyvalent : moins cher, moins productif, il circule et relève. */
+export function hirePoly(s: GameState, fi: number): Result {
+  if (!factoryAt(s, fi)) return fail('usine');
+  if (polyCount(s, fi) >= POLY.maxPerFactory) return fail('complet');
+  const w = newWorker(s, fi, 'poly');
+  s.workers.push(w);
+  return ok(0, w.name);
+}
+
+/** Licencier un ouvrier précis (jamais Marcel). Son poste reste vacant. */
+export function fire(s: GameState, id: number): Result {
+  const w = s.workers.find((x) => x.id === id);
+  if (!w || w.name === 'Marcel') return fail('personne');
   releaseWorker(s, w);
-  w.state = 'train';
-  w.timer = trainTime(s, level);
-  w.trainTo = level;
-  w.home = -1;
-  refreshHomes(s, ci);
+  const f = s.factories[w.factory];
+  if (f) {
+    if (w.kind === 'crank' && f.lines[w.line]) f.lines[w.line].crank = -1;
+    if (w.kind === 'post') {
+      const m = f.lines[w.line]?.slots[w.station];
+      if (m && m.post === w.id) m.post = -1;
+    }
+  }
+  s.workers.splice(s.workers.indexOf(w), 1);
+  if (s.act >= 3) s.stats.laidOff++;
+  return ok(0, w.name);
+}
+
+/**
+ * Formation d'urgence : l'ouvrier attitré d'une machine qu'il ne sait pas encore conduire
+ * peut être formé ou promu même à découvert (comme la maintenance) : on n'est jamais bloqué.
+ */
+export function urgent(s: GameState, w: Worker): boolean {
+  if (w.kind !== 'post') return false;
+  const m = s.factories[w.factory]?.lines[w.line]?.slots[w.station];
+  return !!m && m.tier < ROBOT_TIER && w.level < TIER_OPERATOR_LEVEL[m.tier];
+}
+
+export function train(s: GameState, id: number): Result {
+  const w = s.workers.find((x) => x.id === id);
+  if (!w) return fail('personne');
+  if (!canTrain(w)) return fail(w.state === 'train' ? 'absent' : 'max');
+  const cost = trainingCost(s, w);
+  if (s.money < cost && !urgent(s, w)) return fail('argent');
+  startCourse(s, w, 'train');
   return ok(cost, w.name);
 }
 
-export function moveWorker(s: GameState, id: number, toChain: number): Result {
+export function promote(s: GameState, id: number): Result {
   const w = s.workers.find((x) => x.id === id);
-  if (!w || !chainAt(s, toChain) || w.chain === toChain) return fail('ouvrier');
-  releaseWorker(s, w);
-  const from = w.chain;
-  w.chain = toChain;
-  w.pos = DOOR_POS;
-  w.from = DOOR_POS;
-  w.home = -1;
-  refreshHomes(s, from);
-  refreshHomes(s, toChain);
-  return ok(0);
+  if (!w) return fail('personne');
+  if (!canPromote(w)) return fail('formations');
+  const cost = promotionCost(s, w);
+  if (s.money < cost && !urgent(s, w)) return fail('argent');
+  startCourse(s, w, 'promote');
+  return ok(cost, w.name);
 }
 
 export function roleAvailable(s: GameState, id: RoleId): boolean {
@@ -104,8 +150,14 @@ export function hireRole(s: GameState, id: RoleId): Result {
   if (!roleAvailable(s, id)) return fail('acte');
   if (!pay(s, def.cost)) return fail('argent');
   s.roles[id] = true;
-  if (id === 'foreman') for (let i = 0; i < s.chains.length; i++) assignHomes(s, i);
   return ok(def.cost);
+}
+
+/** Congédier un rôle d'encadrement : on n'est jamais coincé par un salaire. */
+export function dismissRole(s: GameState, id: RoleId): Result {
+  if (!s.roles[id]) return fail('absent');
+  s.roles[id] = false;
+  return ok(0);
 }
 
 export function canteenCost(s: GameState): number {
@@ -121,110 +173,173 @@ export function buyCanteen(s: GameState): Result {
   return ok(c);
 }
 
+// ---------------------------------------------------------------- Ingénieur méthodes
+
+export function setMethodsTarget(s: GameState, station: number, tier: number): Result {
+  if (station < 0 || station > 3 || tier < 0 || tier >= TIER_COUNT) return fail('consigne');
+  s.methods.targets[station] = tier;
+  return ok(0);
+}
+
+export function setMethodsBudget(s: GameState, k: number): Result {
+  if (k < 0 || k >= METHODS.budgets.length) return fail('consigne');
+  s.methods.budget = k;
+  return ok(0);
+}
+
+export function setMethodsActive(s: GameState, on: boolean): Result {
+  s.methods.active = on;
+  return ok(0);
+}
+
 // ---------------------------------------------------------------- Équipement
 
-export function addUnitCost(s: GameState, ci: number, si: number): number {
-  const st = s.chains[ci].stations[si];
-  return Math.round(unitPrice(st.tier, si, st.units.length + 1));
+/** Nombre de machines d'un poste dans l'usine. */
+export function stationCount(f: Factory, st: number): number {
+  return f.lines.filter((l) => l.slots[st]).length;
 }
 
-export function addUnit(s: GameState, ci: number, si: number): Result {
-  const c = chainAt(s, ci);
-  if (!c) return fail('chaîne');
-  const st = c.stations[si];
-  if (st.units.length >= MAX_UNITS) return fail('complet');
-  const cost = addUnitCost(s, ci, si);
-  if (!pay(s, cost)) return fail('argent');
-  st.units.push(newUnit());
-  refreshHomes(s, ci);
-  return ok(cost);
+/** Palier d'une nouvelle machine : celui de la plus moderne de ce poste dans l'usine. */
+export function newUnitTier(f: Factory, st: number): number {
+  let t = 0;
+  for (const l of f.lines) if (l.slots[st]) t = Math.max(t, l.slots[st]!.tier);
+  return t;
 }
 
-export function upgradeTool(s: GameState, ci: number, si: number): Result {
-  const c = chainAt(s, ci);
-  if (!c) return fail('chaîne');
-  const st = c.stations[si];
-  if (st.tool >= TOOL_MAX) return fail('max');
-  const cost = toolCost(st.tier, si, st.tool);
+export function addUnitCost(s: GameState, fi: number, st: number): number {
+  const f = s.factories[fi];
+  return Math.round(unitPrice(newUnitTier(f, st), st, stationCount(f, st)));
+}
+
+/** Acheter un poste : il s'ajoute à la première chaîne qui ne l'a pas encore. */
+export function addUnit(s: GameState, fi: number, st: number, line = -1): Result {
+  const f = factoryAt(s, fi);
+  if (!f) return fail('usine');
+  const l = line >= 0 && !f.lines[line]?.slots[st] ? line : f.lines.findIndex((x) => !x.slots[st]);
+  if (l < 0) return fail('complet');
+  const tier = newUnitTier(f, st);
+  const cost = addUnitCost(s, fi, st);
   if (!pay(s, cost)) return fail('argent');
-  st.tool++;
-  return ok(cost);
+  f.lines[l].slots[st] = newMachine(tier);
+  return ok(cost, String(l));
 }
 
 export function tierAllowed(s: GameState, tier: number): boolean {
   return tier < TIER_COUNT && s.research.tier >= tier && s.act >= TIER_MIN_ACT[tier];
 }
 
-export function modernize(s: GameState, ci: number, si: number): Result {
-  const c = chainAt(s, ci);
-  if (!c) return fail('chaîne');
-  const st = c.stations[si];
-  if (!tierAllowed(s, st.tier + 1)) return fail('recherche');
-  const cost = modernizeCost(st, si);
+/** La prochaine machine à moderniser pour ce poste : la moins moderne, dans l'ordre des chaînes. */
+export function modernizeTarget(s: GameState, fi: number, st: number): { line: number; tier: number; cost: number } | null {
+  const f = s.factories[fi];
+  if (!f) return null;
+  let best = -1;
+  for (let l = 0; l < f.lines.length; l++) {
+    const m = f.lines[l].slots[st];
+    if (!m || !tierAllowed(s, m.tier + 1)) continue;
+    if (best < 0 || m.tier < f.lines[best].slots[st]!.tier) best = l;
+  }
+  if (best < 0) return null;
+  const m = f.lines[best].slots[st]!;
+  return { line: best, tier: m.tier, cost: modernizeCost(m.tier, st, machineRank(f, best, st)) };
+}
+
+/** Moderniser une machine de ce poste (la moins moderne). Son ouvrier reste ; s'il n'a pas le niveau, elle attend sa promotion. */
+export function modernize(s: GameState, fi: number, st: number): Result {
+  const f = factoryAt(s, fi);
+  const tgt = modernizeTarget(s, fi, st);
+  if (!f || !tgt) return fail('recherche');
+  if (s.money < tgt.cost) return fail('argent');
+  modernizeMachine(s, f, tgt.line, st, machineRank(f, tgt.line, st));
+  return ok(tgt.cost, String(tgt.line));
+}
+
+export function toolLevel(s: GameState, tier: number, st: number): number {
+  return s.tooling[tier]?.[st] ?? 0;
+}
+
+/** Outillage : s'applique à toutes les machines de ce poste et de ce palier, dans toute la partie. */
+export function upgradeTool(s: GameState, tier: number, st: number): Result {
+  if (tier > s.research.tier) return fail('recherche');
+  const lvl = toolLevel(s, tier, st);
+  if (lvl >= TOOL_MAX) return fail('max');
+  const cost = toolCost(tier, st, lvl);
   if (!pay(s, cost)) return fail('argent');
-  for (const w of s.workers) if (w.chain === ci && w.ts === si) releaseWorker(s, w);
-  c.stations[si] = newStation(st.tier + 1, st.units.length, 0);
-  // Le matériau doit rester usinable : sinon retour à la fonte.
-  if (!materialOk(s, c, c.material)) setMaterial(s, ci, 0);
-  refreshHomes(s, ci);
+  s.tooling[tier][st] = lvl + 1;
   return ok(cost);
 }
 
-export function repairCost(s: GameState, ci: number, si: number, ui: number): number {
-  const st = s.chains[ci].stations[si];
-  const share = s.research.workshop ? WEAR.internalRepairShare : WEAR.externalRepairShare;
-  return Math.round(unitPrice(st.tier, si, ui + 1) * share);
+/** Paliers présents dans au moins une usine pour ce poste. */
+export function tiersInUse(s: GameState, st: number): number[] {
+  const set = new Set<number>();
+  for (const f of s.factories) for (const l of f.lines) if (l.slots[st]) set.add(l.slots[st]!.tier);
+  return [...set].sort((a, b) => a - b);
+}
+
+export function buyConveyor(s: GameState, fi: number, l: number): Result {
+  const f = factoryAt(s, fi);
+  const line = f?.lines[l];
+  if (!f || !line) return fail('chaîne');
+  if (line.conveyor) return fail('déjà');
+  if (line.slots.filter(Boolean).length < 2) return fail('chaîne');
+  const cost = conveyorCost(f, l);
+  if (!pay(s, cost)) return fail('argent');
+  line.conveyor = true;
+  return ok(cost);
+}
+
+export function repairCost(s: GameState, fi: number, l: number, st: number): number {
+  const f = s.factories[fi];
+  const m = f.lines[l].slots[st]!;
+  const share = s.research.workshop ? 0.08 : 0.25;
+  return Math.round(unitPrice(m.tier, st, machineRank(f, l, st)) * share);
 }
 
 /** Maintenance : jamais refusée, quitte à s'endetter. */
-export function repair(s: GameState, ci: number, si: number, ui: number): Result {
-  const u = s.chains[ci]?.stations[si]?.units[ui];
-  if (!u || !u.broken || u.service > 0) return fail('état');
-  const cost = repairCost(s, ci, si, ui);
+export function repair(s: GameState, fi: number, l: number, st: number): Result {
+  const m = s.factories[fi]?.lines[l]?.slots[st];
+  if (!m || !m.broken || m.service > 0) return fail('état');
+  const cost = repairCost(s, fi, l, st);
   s.money -= cost;
-  u.service = s.research.workshop ? WEAR.internalRepairTime : WEAR.externalRepairTime;
-  u.serviceKind = 'repair';
+  m.service = s.research.workshop ? 20 : 60;
+  m.serviceKind = 'repair';
   return ok(cost);
 }
 
-export function serviceCost(s: GameState, ci: number, si: number, ui: number): number {
-  const st = s.chains[ci].stations[si];
-  return Math.round(unitPrice(st.tier, si, ui + 1) * WEAR.serviceShare);
+export function serviceCost(s: GameState, fi: number, l: number, st: number): number {
+  const f = s.factories[fi];
+  const m = f.lines[l].slots[st]!;
+  return Math.round(unitPrice(m.tier, st, machineRank(f, l, st)) * 0.1);
 }
 
 /** Révision d'une machine usée (remise à zéro de l'usure). */
-export function service(s: GameState, ci: number, si: number, ui: number): Result {
-  const st = s.chains[ci]?.stations[si];
-  const u = st?.units[ui];
-  if (!st || !u || u.broken || u.service > 0 || st.tier === 0 || u.wear < 0.05) return fail('état');
-  const cost = serviceCost(s, ci, si, ui);
+export function service(s: GameState, fi: number, l: number, st: number): Result {
+  const m = s.factories[fi]?.lines[l]?.slots[st];
+  if (!m || m.broken || m.service > 0 || m.tier === 0 || m.wear < 0.05) return fail('état');
+  const cost = serviceCost(s, fi, l, st);
   s.money -= cost;
-  u.service = WEAR.serviceTime;
-  u.serviceKind = 'service';
+  m.service = 30;
+  m.serviceKind = 'service';
   return ok(cost);
 }
 
-export function setMaterial(s: GameState, ci: number, m: number): Result {
-  const c = chainAt(s, ci);
-  if (!c || m === c.material) return fail('même');
-  if (!materialOk(s, c, m)) return fail('matériau');
-  c.material = m;
-  c.buf = [0, 0, 0, 0];
-  for (const w of s.workers) if (w.chain === ci && (w.state === 'walk' || w.state === 'work')) {
-    releaseWorker(s, w);
-  }
-  c.buf = [0, 0, 0, 0];
-  c.matChange = 60;
+export function setMaterial(s: GameState, fi: number, mat: number): Result {
+  const f = factoryAt(s, fi);
+  if (!f || mat === f.material) return fail('même');
+  if (!materialOk(s, f, mat)) return fail('matériau');
+  for (const w of s.workers) if (w.factory === fi && (w.state === 'walk' || w.state === 'work' || w.state === 'carry')) releaseWorker(s, w);
+  f.material = mat;
+  for (const l of f.lines) l.buf = [0, 0, 0, 0];
+  f.matChange = 60;
   return ok(0);
 }
 
-// ---------------------------------------------------------------- Chaînes
+// ---------------------------------------------------------------- Usines
 
-export function bestChainIndex(s: GameState): number {
+export function bestFactoryIndex(s: GameState): number {
   let best = 0;
   let bv = -1;
-  s.chains.forEach((c, i) => {
-    const v = chainValue(c);
+  s.factories.forEach((f, i) => {
+    const v = factoryValue(f);
     if (v > bv) {
       bv = v;
       best = i;
@@ -233,24 +348,45 @@ export function bestChainIndex(s: GameState): number {
   return best;
 }
 
-export function chainCost(s: GameState, model?: number): number {
-  return newChainCost(s, s.chains[model ?? bestChainIndex(s)]);
+export function factoryCost(s: GameState, model?: number): number {
+  return newFactoryCost(s, s.factories[model ?? bestFactoryIndex(s)]);
 }
 
-export function maxChains(s: GameState): number {
-  return ACTS[s.act].maxChains;
+export function maxFactories(s: GameState): number {
+  return ACTS[s.act].maxFactories;
 }
 
-export function buyChain(s: GameState, model?: number): Result {
-  if (s.chains.length >= maxChains(s)) return fail('max');
-  const src = s.chains[model ?? bestChainIndex(s)];
-  const cost = newChainCost(s, src);
+/** Bâtir une usine équipée comme la meilleure (machines et convoyeurs, sans les ouvriers). */
+export function buyFactory(s: GameState, model?: number): Result {
+  if (s.factories.length >= maxFactories(s)) return fail('max');
+  const src = s.factories[model ?? bestFactoryIndex(s)];
+  const cost = newFactoryCost(s, src);
   if (!pay(s, cost)) return fail('argent');
-  const c = newChain(s.chains.length, src.material);
-  c.stations = src.stations.map((st) => newStation(st.tier, st.units.length, st.tool));
-  s.chains.push(c);
+  const f = newFactory(s.factories.length, src.material);
+  f.lines = src.lines.map((l) => ({
+    slots: l.slots.map((m) => (m ? newMachine(m.tier) : null)),
+    buf: [0, 0, 0, 0],
+    conveyor: l.conveyor,
+    crank: -1,
+    produced: 0,
+  }));
+  s.factories.push(f);
   return ok(cost);
 }
+
+/** Les ouvriers dont la machine exige un niveau qu'ils n'ont pas encore. */
+export function unqualified(s: GameState, fi: number): Worker[] {
+  const f = s.factories[fi];
+  if (!f) return [];
+  return s.workers.filter((w) => {
+    if (w.factory !== fi || w.kind !== 'post') return false;
+    const m = f.lines[w.line]?.slots[w.station];
+    return !!m && m.tier < ROBOT_TIER && w.level < TIER_OPERATOR_LEVEL[m.tier];
+  });
+}
+
+export const LINE_COUNT = LINES;
+export const DOOR = DOOR_POS;
 
 // ---------------------------------------------------------------- Énergie
 
@@ -300,7 +436,11 @@ export function research(s: GameState, id: ResearchId): Result {
   if (!researchAvailable(s, id)) return fail('indisponible');
   const cost = researchCost(s, id);
   if (!pay(s, cost)) return fail('argent');
-  if (id === 'tier') s.research.tier++;
+  if (id === 'tier') {
+    s.research.tier++;
+    const t = s.research.tier;
+    for (let st = 0; st < 4; st++) s.tooling[t][st] = Math.max(s.tooling[t][st], Math.floor(s.tooling[t - 1][st] / 2));
+  }
   else if (id.startsWith('mat:')) s.research.materials[+id.slice(4)] = true;
   else s.research[id as 'workshop' | 'preventive' | 'predictive'] = true;
   return ok(cost);
@@ -386,7 +526,7 @@ export function pendingKnowHow(s: GameState): number {
 }
 
 export function moveCapital(s: GameState): number {
-  const value = s.chains.reduce((a, c) => a + chainValue(c), 0);
+  const value = s.factories.reduce((a, f) => a + factoryValue(f), 0);
   return Math.round(value * PRESTIGE.capitalShare * (1 + knowHow(s, 'capital')));
 }
 
@@ -396,12 +536,16 @@ export function canMove(s: GameState): boolean {
 
 function resetSite(s: GameState, capital: number): void {
   const marcel = s.workers.find((w) => w.name === 'Marcel');
-  s.chains = [newChain(0)];
+  s.factories = [newFactory(0)];
   s.workers = [];
   if (marcel) {
-    Object.assign(marcel, { chain: 0, state: 'idle', ts: -1, tu: -1, pos: 1.5, from: 1.5, timer: 0, home: -1, load: 0 });
+    Object.assign(marcel, {
+      factory: 0, kind: 'poly', line: -1, station: -1, state: 'idle', tl: -1, ts: -1, carryLine: -1, carryTo: -1,
+      pos: 1.5, from: 1.5, timer: 0, load: 0, rest: 0, course: 'none',
+    });
     s.workers.push(marcel);
   }
+  s.methods.active = false;
   s.stock = MATERIALS.map(() => 0);
   s.reserved = MATERIALS.map(() => 0);
   s.spot = [];

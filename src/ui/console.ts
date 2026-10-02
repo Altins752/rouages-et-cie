@@ -1,28 +1,23 @@
 /** Pupitre : afficheur LCD (caisse, objectif, stock), compte-tours, voyants. */
 import { ACTS, TACHO } from '../data/balance';
 import { G, inRed, vmax } from '../game';
-import { estimateFactory, factoryPlans } from '../sim/analysis';
+import { estimateSite } from '../sim/analysis';
 import { $, setText } from './dom';
 import { fmt, fmtMoney, fmtP, mmss, pct } from './format';
+import { netRate, revenueRate, trackRates } from './rates';
 import { SITE_NAMES } from './text';
 
 let lastVm = -1;
-let rateCache = { t: -1e9, v: 0 };
+let rateCache = { t: -1e9, info: '' };
 
 export function updateConsole(): void {
   const s = G.s;
   setText($('money'), fmtMoney(s.money));
   $('money').parentElement!.classList.toggle('neg', s.money < 0);
   setText($('siteName'), s.ended && s.act === 5 ? 'Groupe Rouages & Cie' : SITE_NAMES[s.act]);
-  // Bénéfice estimé : seulement avec le contrôleur de gestion
-  if (s.roles.controller) {
-    const now = performance.now();
-    if (now - rateCache.t > 1000) {
-      const f = s.flow;
-      rateCache = { t: now, v: f.revenue + f.contracts - f.raw - f.salaries - f.energy - f.maintenance };
-    }
-    setText($('rate'), `${rateCache.v >= 0 ? '+' : '−'}${fmt(Math.abs(rateCache.v))} €/s`);
-  } else setText($('rate'), '');
+  // Recettes toujours affichées ; le bénéfice net avec le contrôleur de gestion
+  trackRates(s);
+  setText($('rate'), `+${fmtP(revenueRate())} €/s`);
   const obj = $('obj');
   const g = ACTS[s.act].goal;
   obj.classList.remove('warn', 'good');
@@ -43,17 +38,17 @@ export function updateConsole(): void {
     setText($('objR'), `${fmt(s.stats.produced)} écrous produits`);
   }
   setText($('stock'), fmt(s.stock.reduce((a, b) => a + b, 0)));
-  let info = `Vendus ${fmt(s.stats.sold)}`;
-  if (s.roles.foreman) {
-    const now = performance.now();
-    if (now - rateCache.t > 1000 || !s.roles.controller) {
-      const e = estimateFactory(s, factoryPlans(s));
-      info = `Cadence ${fmtP(e.chains.reduce((a, c) => a + c.x, 0))}/s`;
-    }
+  const now = performance.now();
+  if (now - rateCache.t > 1000) {
+    rateCache.t = now;
+    const n = netRate();
+    if (s.roles.controller) rateCache.info = `Net ${n >= 0 ? '+' : '−'}${fmtP(Math.abs(n))} €/s`;
+    else if (s.roles.foreman) rateCache.info = `Cadence ${fmtP(estimateSite(s).factories.reduce((a, e) => a + e.x, 0))}/s`;
+    else rateCache.info = `Vendus ${fmt(s.stats.sold)}`;
   }
-  setText($('infoR'), info);
+  setText($('infoR'), rateCache.info);
   // Voyants
-  const broken = s.chains.some((c) => c.stations.some((st) => st.units.some((u) => u.broken)));
+  const broken = s.factories.some((f) => f.lines.some((l) => l.slots.some((m) => m && m.broken)));
   lamp('panne', broken);
   lamp('reseau', s.energy.cut);
   lamp('ferrum', !!s.crisis.active || s.market.priceWar > 0);

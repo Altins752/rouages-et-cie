@@ -30,27 +30,31 @@ export const MATERIAL_DESC = [
 export const LEVEL_NAMES = ['', 'Manœuvre', 'Opérateur', 'Régleur', 'Technicien'];
 export const LEVEL_PLURAL = ['', 'manœuvres', 'opérateurs', 'régleurs', 'techniciens'];
 export const LEVEL_DESC = ['', 'travail à la main', 'conduite de machine', 'réglage, petite maintenance', 'maintenance des robots'];
+export const KIND_NAMES = { post: 'Poste fixe', poly: 'Polyvalent', crank: 'Convoyeur' } as const;
 
 export const ROLE_NAMES: Record<RoleId, string> = {
   foreman: 'Contremaître',
   supervisor: 'Superviseur de chaîne',
   hr: 'Ressources humaines',
+  methods: 'Ingénieur méthodes',
   logistics: 'Opérateur logistique',
   sales: 'Commercial',
   controller: 'Contrôleur de gestion',
 };
 export const ROLE_DATA: Record<RoleId, string> = {
-  foreman: 'Cadence de chaque poste et goulot, ici et dans l’atelier.',
+  foreman: 'Rapport de productivité : cadence de chaque poste, goulot de chaque chaîne.',
   supervisor: 'Occupation, pièces en attente, gaspillage et usure.',
   hr: 'Compétences, moral et formations de chaque ouvrier.',
+  methods: 'Paliers visés par poste et prochaine modernisation.',
   logistics: 'Flux de stock, autonomie et échéances des contrats.',
   sales: 'Prévisions et prix du marché.',
   controller: 'Coût de revient, marges et compte de résultat.',
 };
 export const ROLE_DECISION: Record<RoleId, string> = {
-  foreman: 'Attribue un poste à chaque ouvrier selon la charge.',
+  foreman: 'Place chaque nouvel ouvrier sur le poste le plus lent et signale les postes qui freinent.',
   supervisor: 'Recommande l’achat le plus vite rentabilisé.',
-  hr: 'Forme les ouvriers quand une machine l’exige et remonte le moral.',
+  hr: 'Forme et promeut les ouvriers quand leur machine l’exige, puis celui qui freine sa chaîne.',
+  methods: 'Modernise les machines selon votre consigne, une fois leur ouvrier prêt.',
   logistics: 'Livre les contrats ponctuels dès que le stock le permet.',
   sales: 'Signe les contrats long terme que la production peut tenir.',
   controller: 'Rapport périodique avec alertes au télex.',
@@ -70,7 +74,7 @@ export const KNOW_HOW_DESC: Record<KnowHowId, string> = {
   price: '+5 % sur le prix de vente par niveau.',
   wear: '−12 % d’usure par niveau.',
   training: 'Formations 20 % plus courtes et 10 % moins chères par niveau.',
-  hall: 'Halls de chaîne 10 % moins chers par niveau.',
+  hall: 'Halls d’usine 10 % moins chers par niveau.',
   capital: '+25 % de capital au déménagement par niveau.',
   energy: '−15 % de consommation électrique par niveau.',
 };

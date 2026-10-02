@@ -3,14 +3,14 @@
  * rentabilisée (comme le simulateur Python d'origine), en jouant sur le vrai moteur.
  */
 import {
-  ACTS, CONTRACTS, ENERGY, KNOW_HOW, MATERIALS, MAX_WORKERS_PER_CHAIN, RESEARCH_EXTRA, ROBOT_TIER, ROLES, TIER_OPERATOR_LEVEL,
+  ACTS, CONTRACTS, ENERGY, KNOW_HOW, MATERIALS, METHODS, RESEARCH_EXTRA, ROBOT_TIER, ROLES, TIER_OPERATOR_LEVEL,
   TIER_RESEARCH,
 } from '../data/balance';
 import * as A from './actions';
 import { bestCandidate, firstStepCost } from './advisor';
 import type { Candidate } from './advisor';
-import { estimateFactory, factoryPlans } from './analysis';
-import { knowHowCost } from './formulas';
+import { estimateSite } from './analysis';
+import { canPromote, canTrain, knowHowCost, promotionCost, trainingCost } from './formulas';
 import type { GameState } from './types';
 
 export interface AiLog {
@@ -46,56 +46,41 @@ function run(ai: AiState, s: GameState, what: string, r: A.Result): boolean {
   return r.ok;
 }
 
-/** Garde les postes servis : forme ou embauche les opérateurs manquants. */
+/** Garde les postes tenus : embauche aux postes libres, qualifie les titulaires, technicien, relève. */
 function staffing(ai: AiState, s: GameState): void {
-  s.chains.forEach((c, ci) => {
-    const ws = s.workers.filter((w) => w.chain === ci);
-    const lv = (w: (typeof ws)[number]) => (w.state === 'train' ? w.trainTo : w.level);
-    const human = c.stations.filter((st) => st.tier < ROBOT_TIER);
-    const humanUnits = human.reduce((a, st) => a + st.units.length, 0);
-    const humanStations = human.filter((st) => st.units.length > 0).length;
-    // Au moins un ouvrier par poste humain.
-    if (ws.length < humanStations) {
-      run(ai, s, 'hire', A.hire(s, ci));
-      return;
+  s.factories.forEach((f, fi) => {
+    for (let k = 0; k < 8 && A.freePosts(s, fi).length; k++) run(ai, s, 'hire', A.hire(s, fi));
+    // Qualification exigée par la machine du poste
+    for (const w of A.unqualified(s, fi)) {
+      if (canPromote(w)) run(ai, s, `promote L${w.level + 1}`, A.promote(s, w.id));
+      else if (canTrain(w)) run(ai, s, 'train', A.train(s, w.id));
     }
-    // Relève : quand le moral baisse, quelques ouvriers de plus que de machines.
-    if (s.act >= 2 && humanUnits > 0 && ws.length < Math.min(MAX_WORKERS_PER_CHAIN, Math.ceil(humanUnits * 1.25) + 1)) {
+    // Un technicien pour les robots
+    const robots = f.lines.some((l) => l.slots.some((m) => m && m.tier === ROBOT_TIER));
+    if (robots && !s.workers.some((w) => w.factory === fi && (w.level >= 4 || (w.state === 'train' && w.course === 'promote' && w.level === 3)))) {
+      const w = s.workers.filter((x) => x.factory === fi && x.kind !== 'crank' && x.state !== 'train').sort((a, b) => b.level * 10 + b.trainings - (a.level * 10 + a.trainings))[0];
+      if (!w && !s.workers.some((x) => x.factory === fi && x.state === 'train')) run(ai, s, 'hire poly (tech)', A.hirePoly(s, fi));
+      if (w) {
+        if (canPromote(w) && s.money >= promotionCost(s, w)) run(ai, s, 'promote tech', A.promote(s, w.id));
+        else if (canTrain(w) && s.money >= trainingCost(s, w)) run(ai, s, 'train tech', A.train(s, w.id));
+      }
+    }
+    // Relève : un polyvalent quand le moral baisse
+    if (s.act >= 2) {
+      const ws = s.workers.filter((w) => w.factory === fi);
       const mor = ws.reduce((a, w) => a + w.morale, 0) / Math.max(1, ws.length);
-      if (mor < 0.6) {
-        run(ai, s, 'hire relief', A.hire(s, ci));
-        return;
-      }
-    }
-    for (const req of [4, 3, 2]) {
-      let need = 0;
-      if (req === 4) need = c.stations.some((st) => st.tier === ROBOT_TIER) ? 1 : 0;
-      else for (const st of human) if (TIER_OPERATOR_LEVEL[st.tier] >= req) need += st.units.length;
-      const have = ws.filter((w) => lv(w) >= req).length;
-      if (have >= need) continue;
-      const cand = ws.filter((w) => w.state !== 'train' && w.level === req - 1);
-      if (cand.length) {
-        run(ai, s, `train${req}`, A.train(s, ci, req, cand[0].id));
-        return;
-      }
-      if (ws.length < humanUnits + 1 || req === 4) {
-        const lower = ws.filter((w) => w.state !== 'train' && w.level < req - 1);
-        if (lower.length) run(ai, s, `train${lower[0].level + 1}`, A.train(s, ci, lower[0].level + 1, lower[0].id));
-        else run(ai, s, 'hire', A.hire(s, ci));
-        return;
-      }
+      if (mor < 0.6 && A.polyCount(s, fi) < 3) run(ai, s, 'hire poly', A.hirePoly(s, fi));
     }
   });
 }
 
 function maintenance(ai: AiState, s: GameState): void {
-  s.chains.forEach((c, ci) =>
-    c.stations.forEach((st, si) =>
-      st.units.forEach((u, ui) => {
-        if (u.broken && u.service <= 0) run(ai, s, 'repair', A.repair(s, ci, si, ui));
-        else if (!s.research.preventive && st.tier > 0 && u.wear > 0.45 && u.service <= 0 && s.money > 0) {
-          run(ai, s, 'service', A.service(s, ci, si, ui));
-        }
+  s.factories.forEach((f, fi) =>
+    f.lines.forEach((line, l) =>
+      line.slots.forEach((m, st) => {
+        if (!m) return;
+        if (m.broken && m.service <= 0) run(ai, s, 'repair', A.repair(s, fi, l, st));
+        else if (!s.research.preventive && m.tier > 0 && m.wear > 0.45 && m.service <= 0 && s.money > 0) run(ai, s, 'service', A.service(s, fi, l, st));
       }),
     ),
   );
@@ -103,7 +88,7 @@ function maintenance(ai: AiState, s: GameState): void {
 
 function researchStep(ai: AiState, s: GameState, best: Candidate | null): boolean {
   const opts: { id: A.ResearchId; cost: number }[] = [];
-  const allTier = s.chains.some((c) => c.stations.every((st) => st.tier >= s.research.tier));
+  const allTier = s.factories.some((f) => f.lines.every((l) => l.slots.every((m) => !m || m.tier >= s.research.tier)));
   if (A.researchAvailable(s, 'tier') && (allTier || s.research.tier === 0)) opts.push({ id: 'tier', cost: TIER_RESEARCH[s.research.tier + 1] });
   for (let m = 1; m < MATERIALS.length; m++) {
     const id = `mat:${m}` as A.ResearchId;
@@ -121,24 +106,49 @@ function researchStep(ai: AiState, s: GameState, best: Candidate | null): boolea
   return false;
 }
 
-/** Exécute la première étape payante du plan (le matériau suit, la formation est gérée à part). */
+/** Exécute la première étape payante du plan (le matériau suit, l'embauche est gratuite). */
 function execute(ai: AiState, s: GameState, c: Candidate): boolean {
   for (const st of c.steps) {
+    const fi = st.factory;
     switch (st.kind) {
       case 'hire':
-        if (c.kind === 'hire') return run(ai, s, 'hire', A.hire(s, st.chain));
+        if (c.kind === 'hire') return run(ai, s, 'hire', A.hire(s, fi));
         continue;
+      case 'poly':
+        return run(ai, s, 'hire poly', A.hirePoly(s, fi));
       case 'material':
-        run(ai, s, `material c${st.chain} ${MATERIALS[st.material].id}`, A.setMaterial(s, st.chain, st.material));
+        run(ai, s, `material f${fi} ${MATERIALS[st.material].id}`, A.setMaterial(s, fi, st.material));
         continue;
-      case 'unit':
-        return run(ai, s, `unit c${st.chain} s${st.station} (${c.kind})`, A.addUnit(s, st.chain, st.station));
+      case 'unit': {
+        const ok = run(ai, s, `unit f${fi} s${st.station} (${c.kind})`, A.addUnit(s, fi, st.station, st.line));
+        if (ok) A.hire(s, fi);
+        return ok;
+      }
+      case 'modernize': {
+        const tgt = A.modernizeTarget(s, fi, st.station);
+        const f = s.factories[fi];
+        const m = tgt ? f.lines[tgt.line].slots[st.station] : null;
+        const w = m && m.post >= 0 ? s.workers.find((x) => x.id === m.post) : undefined;
+        if (tgt && w && tgt.tier + 1 < ROBOT_TIER && w.level < TIER_OPERATOR_LEVEL[tgt.tier + 1]) {
+          // L'ouvrier d'abord : la machine ne s'arrêtera pas à la modernisation.
+          if (w.state === 'train') return false;
+          if (canPromote(w)) return run(ai, s, 'promote (prépare)', A.promote(s, w.id));
+          if (canTrain(w)) return run(ai, s, 'train (prépare)', A.train(s, w.id));
+          return false;
+        }
+        return run(ai, s, `modernize f${fi} s${st.station}`, A.modernize(s, fi, st.station));
+      }
       case 'tool':
-        return run(ai, s, `tool c${st.chain} s${st.station} (${c.kind})`, A.upgradeTool(s, st.chain, st.station));
-      case 'modernize':
-        return run(ai, s, `modernize c${st.chain} s${st.station}`, A.modernize(s, st.chain, st.station));
-      case 'chain':
-        return run(ai, s, 'chain', A.buyChain(s));
+        return run(ai, s, `tool t${st.tier} s${st.station}`, A.upgradeTool(s, st.tier, st.station));
+      case 'conveyor': {
+        const ok = run(ai, s, `conveyor f${fi} l${st.line}`, A.buyConveyor(s, fi, st.line));
+        if (ok) A.hire(s, fi);
+        return ok;
+      }
+      case 'train':
+        return run(ai, s, 'train bottleneck', A.train(s, st.worker));
+      case 'factory':
+        return run(ai, s, 'factory', A.buyFactory(s));
     }
   }
   return false;
@@ -183,7 +193,6 @@ function knowHowStep(s: GameState): void {
 
 /** Une décision du joueur automatique. */
 export function aiStep(ai: AiState, s: GameState): void {
-  // Fin d'acte
   if (s.act === 0 && s.money >= s.debt) {
     run(ai, s, 'payDebt', A.payDebt(s));
     return;
@@ -201,12 +210,20 @@ export function aiStep(ai: AiState, s: GameState): void {
   maintenance(ai, s);
   staffing(ai, s);
   contractsStep(s);
-  // Encadrement : contremaître dès que possible, les autres quand la masse salariale le permet.
-  const est = estimateFactory(s, factoryPlans(s));
+  // Encadrement : quand le salaire reste petit devant les recettes ; on congédie s'il pèse trop.
+  const est = estimateSite(s);
   for (const r of ROLES) {
-    if (s.roles[r.id] || !A.roleAvailable(s, r.id)) continue;
-    if (r.salary <= Math.max(0.25, est.revenue * 0.04)) run(ai, s, `role ${r.id}`, A.hireRole(s, r.id));
+    if (!A.roleAvailable(s, r.id)) continue;
+    if (!s.roles[r.id] && r.salary <= Math.max(0.25, est.revenue * 0.04)) {
+      run(ai, s, `role ${r.id}`, A.hireRole(s, r.id));
+      if (r.id === 'methods') {
+        for (let st = 0; st < 4; st++) A.setMethodsTarget(s, st, s.research.tier);
+        A.setMethodsBudget(s, 1);
+        A.setMethodsActive(s, true);
+      }
+    } else if (s.roles[r.id] && r.salary > est.revenue * 0.25 && s.money < 0) run(ai, s, `dismiss ${r.id}`, A.dismissRole(s, r.id));
   }
+  if (s.roles.methods) for (let st = 0; st < 4; st++) A.setMethodsTarget(s, st, s.research.tier);
   if (s.act >= 2 && s.canteen === 0 && s.money > A.canteenCost(s) * 2) run(ai, s, 'canteen', A.buyCanteen(s));
   // Énergie : éolien si la facture pèse.
   if (s.act >= ENERGY.act && s.energy.cost > 5) {
@@ -225,3 +242,5 @@ export function actName(act: number): string {
 }
 
 export const AI_ACTS = ACTS.length;
+export const AI_METHODS = METHODS;
+export const AI_LEVEL = TIER_OPERATOR_LEVEL;

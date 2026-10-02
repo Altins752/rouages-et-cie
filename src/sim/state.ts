@@ -1,8 +1,9 @@
-import { KNOW_HOW, MATERIALS, MORALE, PROLOGUE, ROLES, STATION_COUNT, DOOR_POS } from '../data/balance';
+import { KNOW_HOW, LINES, MATERIALS, MORALE, PROLOGUE, ROLES, STATION_COUNT, DOOR_POS, TIER_COUNT } from '../data/balance';
 import type { KnowHowId, RoleId } from '../data/balance';
-import type { Chain, GameState, Station, Unit, Worker } from './types';
+import type { Factory, GameState, Line, Machine, Worker, WorkerKind } from './types';
 
-export const SAVE_VERSION = 2;
+/** v3 : refonte en usines et chaînes ; les parties v1 et v2 ne sont pas reprises. */
+export const SAVE_VERSION = 3;
 
 export const WORKER_NAMES = [
   'Marcel', 'Josette', 'Ahmed', 'Lucie', 'Paulo', 'Inès', 'Gégé', 'Nadia', 'Yvon', 'Sonia', 'Kévin', 'Odile',
@@ -10,29 +11,33 @@ export const WORKER_NAMES = [
   'Huguette', 'Lionel', 'Rachida', 'Momo', 'Sylvie', 'Toni', 'Germaine', 'Karim', 'Ginette', 'Pascal', 'Leïla', 'Bernard',
 ];
 
-export function newUnit(): Unit {
-  return { wear: 0, broken: false, service: 0, serviceKind: 'none', busy: false, prog: 0, worker: -1, busyT: 0 };
+export function newMachine(tier = 0): Machine {
+  return { tier, wear: 0, broken: false, service: 0, serviceKind: 'none', busy: false, prog: 0, post: -1, user: -1, busyT: 0, rate: 0 };
 }
 
-export function newStation(tier = 0, units = 1, tool = 0): Station {
-  return { tier, tool, units: Array.from({ length: units }, newUnit) };
-}
-
-export function newChain(id: number, material = 0): Chain {
+export function newLine(full = false, tier = 0): Line {
   return {
-    id,
-    material,
-    stations: Array.from({ length: STATION_COUNT }, () => newStation()),
+    slots: Array.from({ length: STATION_COUNT }, () => (full ? newMachine(tier) : null)),
     buf: [0, 0, 0, 0],
-    matChange: 0,
+    conveyor: false,
+    crank: -1,
     produced: 0,
-    scrapped: 0,
-    idleUnitT: 0,
-    busyUnitT: 0,
   };
 }
 
-export function newWorker(s: GameState, chain: number, name?: string): Worker {
+/** Une usine neuve : la première chaîne équipée d'établis, les autres vides. */
+export function newFactory(id: number, material = 0): Factory {
+  return {
+    id,
+    material,
+    lines: Array.from({ length: LINES }, (_, i) => newLine(i === 0)),
+    matChange: 0,
+    produced: 0,
+    scrapped: 0,
+  };
+}
+
+export function newWorker(s: GameState, factory: number, kind: WorkerKind, name?: string): Worker {
   const id = s.nextId++;
   let n = name;
   if (!n) {
@@ -42,25 +47,9 @@ export function newWorker(s: GameState, chain: number, name?: string): Worker {
     n = round > 0 ? `${base} ${round + 1}` : base;
   }
   return {
-    id,
-    name: n,
-    level: 1,
-    chain,
-    spec: [0, 0, 0, 0],
-    morale: MORALE.start,
-    load: 0,
-    state: 'idle',
-    pos: DOOR_POS,
-    from: DOOR_POS,
-    walkTotal: 0,
-    timer: 0,
-    ts: -1,
-    tu: -1,
-    trainTo: 0,
-    last: -1,
-    home: -1,
-    displaced: false,
-    rest: 0,
+    id, name: n, kind, level: 1, trainings: 0, trained: 0, factory, line: -1, station: -1,
+    morale: MORALE.start, load: 0, state: 'idle', pos: DOOR_POS, from: DOOR_POS, walkTotal: 0, timer: 0,
+    tl: -1, ts: -1, carryLine: -1, carryTo: -1, course: 'none', last: -1, rest: 0,
   };
 }
 
@@ -87,8 +76,10 @@ export function createGame(seed = 1): GameState {
     money: PROLOGUE.startMoney,
     debt: PROLOGUE.debt,
     due: PROLOGUE.due,
-    chains: [newChain(0)],
+    factories: [newFactory(0)],
     workers: [],
+    tooling: Array.from({ length: TIER_COUNT }, () => [0, 0, 0, 0]),
+    methods: { targets: [0, 0, 0, 0], budget: 1, active: false },
     nextId: 0,
     nameIdx: 0,
     stock: MATERIALS.map(() => 0),
@@ -107,6 +98,7 @@ export function createGame(seed = 1): GameState {
     stats: {
       revenueAct: 0, revenueTotal: 0, produced: 0, sold: 0, scrapped: 0, laidOff: 0, retrained: 0, moves: 0,
       breakdowns: 0, contractsDone: 0, maxShare: 0, playTime: 0, actEnd: [], peakRevenueRate: 0, knowHowEarned: 0,
+      trainings: 0, promotions: 0,
     },
     crisis: { active: null, until: 0, queue: [] },
     story: { seen: {}, flags: {} },
@@ -117,17 +109,24 @@ export function createGame(seed = 1): GameState {
     flow: { revenue: 0, raw: 0, salaries: 0, energy: 0, maintenance: 0, contracts: 0 },
     fx: [],
   };
-  const marcel = newWorker(s, 0, 'Marcel');
+  const marcel = newWorker(s, 0, 'poly', 'Marcel');
   marcel.pos = 1.5;
   marcel.from = 1.5;
   s.workers.push(marcel);
   return s;
 }
 
-export function workersOf(s: GameState, chain: number): Worker[] {
-  return s.workers.filter((w) => w.chain === chain);
-}
-
 export function findWorker(s: GameState, id: number): Worker | undefined {
   return s.workers.find((w) => w.id === id);
+}
+
+/** Toutes les machines d'une usine, avec leur chaîne et leur poste. */
+export function* machines(f: Factory): Generator<{ m: Machine; l: number; s: number }> {
+  for (let l = 0; l < f.lines.length; l++) {
+    const line = f.lines[l];
+    for (let st = 0; st < line.slots.length; st++) {
+      const m = line.slots[st];
+      if (m) yield { m, l, s: st };
+    }
+  }
 }

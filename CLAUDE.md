@@ -58,9 +58,9 @@ src/
 À respecter dans toute modification :
 
 1. **Un seul produit**, l'écrou, décliné en matériaux (fonte → diamant).
-2. **Ligne à 4 postes** (découpe, frappe, taraudage, contrôle). Le débit d'une chaîne est celui de son poste le plus lent.
+2. **Ligne à 4 postes** (découpe, frappe, taraudage, contrôle). Une usine compte 4 chaînes ; le débit d'une chaîne est celui de son poste le plus lent.
 3. **Quatre leviers** : personnel, technologie, chaînes, matériau.
-4. **Ouvriers affectés automatiquement** : chacun prend la tâche disponible la plus en aval et préfère rester sur son poste.
+4. **Ouvriers affectés automatiquement** : à l'embauche, chacun prend le poste libre le plus utile et n'en change plus ; seuls les polyvalents circulent (postes vacants, relève).
 5. **Le clic accélère le temps**, il ne produit rien. Clic maintenu sur la scène (ou barre d'espace maintenue) = milieu de zone verte ; la zone rouge exige de cliquer très vite et multiplie l'usure.
 6. **Jamais bloqué** : planchers de cadence, maintenance toujours possible, dette plutôt que faillite, une crise à la fois.
 7. **Le gaspillage coûte** : machine en veille = électricité à 30 %, opérateur payé, usure lente.
@@ -80,7 +80,7 @@ Validés en jeu, à reporter dans `docs/cadrage.md` :
 
 - Temps de cycle manuels divisés par deux : 2 / 3 / 2,5 / 1 s.
 - Établis : 15 / 20 / 18 / 12 €.
-- Nouveau levier « outillage » : 3 niveaux par poste, +25 % de vitesse chacun, coût = prix de l'établi × 1,5 × 2^niveau.
+- Nouveau levier « outillage » : 50 niveaux par poste et par palier, commun à toutes les machines identiques (refonte v2, cadrage § 19).
 - Prologue : 20 € de départ, marché 4 €/s, dette 800 €, échéance 20 min de jeu.
 - Compte-tours : régime `rev` de 0 à 1 ; tap +0,12 × √(1 − rev) ; retombée (0,08 + 0,5 × rev²)/s ; appui long jusqu'à 0,5 ; zone rouge au-delà de 0,8 ; vitesse = 1 + rev × (max − 1), max ×3 au prologue et ×4 à l'acte I.
 

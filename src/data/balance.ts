@@ -10,14 +10,18 @@ export const SIM_DT = 0.05;
 // ---------------------------------------------------------------- Postes
 
 export const STATION_COUNT = 4;
-/** Unités max par poste et par chaîne. */
-export const MAX_UNITS = 4;
-/** Pile devant un poste : au-delà, l'amont se bloque. */
-export const BUFFER_CAP = 8;
+/** Chaînes par usine (une rangée de 4 postes chacune). */
+export const LINES = 4;
+/** Ancien nom : une unité de chaque poste par chaîne. */
+export const MAX_UNITS = LINES;
+/** Pile devant un poste d'une chaîne : au-delà, l'amont se bloque. */
+export const BUFFER_CAP = 6;
 /** Temps de marche entre deux postes adjacents (s). */
 export const WALK_TIME = 1;
-/** Affectation automatique : poids du choix de tâche (plus en aval, rester sur son poste, marche). */
-export const ASSIGN = { downstream: 10, stay: 14, walk: 3, feedPenalty: 30, home: 40, notHome: 12 };
+/** Portage sans convoyeur : porter la pièce à la pile suivante et revenir (s). */
+export const CARRY_TIME = 1;
+/** Choix de tâche des polyvalents (plus en aval, rester sur son poste, marche). */
+export const ASSIGN = { downstream: 10, stay: 14, walk: 3, feedPenalty: 30 };
 /** Position de la porte, en « postes » (au-delà du contrôle). */
 export const DOOR_POS = 4.5;
 
@@ -53,7 +57,7 @@ export const ROBOT_TIER = 3;
 export const BLACK_TIER = 4;
 export const ROBOT_NO_TECH_FACTOR = 0.5;
 /** Recherche des paliers (€). */
-export const TIER_RESEARCH = [0, 300, 80000, 1_200_000, 200_000_000];
+export const TIER_RESEARCH = [0, 300, 150_000, 3_000_000, 500_000_000];
 /** Acte minimal pour rechercher chaque palier. */
 export const TIER_MIN_ACT = [0, 1, 2, 3, 4];
 /** Recherches de confort du bureau d'études. */
@@ -65,10 +69,24 @@ export const RESEARCH_EXTRA = {
 
 // ------------------------------------------------------------- Outillage
 
-export const TOOL_MAX = 3;
-export const TOOL_SPEED = 1.25;
-/** Coût = prix de la première unité du palier actuel × 1,5 × 2^niveau. */
-export const TOOL_COST_FACTOR = 1.5;
+/**
+ * Outillage : une piste par poste et par palier, commune à toute la partie (conservée aux
+ * déménagements). Vitesse = 1 + gain × (1 − e^(−niveau / tau)) ; coût = prix de l'unité × 1,5 × 1,16^niveau.
+ */
+export const TOOL_MAX = 50;
+export const TOOL_GAIN = 1.6;
+export const TOOL_TAU = 18;
+export const TOOL_COST_FACTOR = 0.8;
+export const TOOL_COST_GROWTH = 1.09;
+
+// ------------------------------------------------------------- Convoyeurs
+
+/** Un convoyeur manuel par chaîne, tourné à la manivelle par un ouvrier : plus de portage. */
+export const CONVEYOR = {
+  /** Prix = part de la valeur des machines de la chaîne, avec un minimum. */
+  share: 0.6,
+  min: 40,
+};
 
 // ------------------------------------------------------------- Matériaux
 
@@ -89,10 +107,10 @@ export const MATERIALS: readonly MaterialDef[] = [
   { id: 'fonte', price: 3, raw: 0.6, k: 1.0, minTier: 0, research: 0, act: 0 },
   { id: 'acier', price: 7, raw: 1.8, k: 1.3, minTier: 0, research: 500, act: 1 },
   { id: 'laiton', price: 18, raw: 5, k: 1.1, minTier: 1, research: 30000, act: 1 },
-  { id: 'inox', price: 50, raw: 16, k: 1.7, minTier: 1, research: 60000, act: 2 },
-  { id: 'titane', price: 160, raw: 55, k: 2.4, minTier: 2, research: 800000, act: 3 },
+  { id: 'inox', price: 50, raw: 16, k: 1.7, minTier: 1, research: 100_000, act: 2 },
+  { id: 'titane', price: 160, raw: 55, k: 2.4, minTier: 2, research: 2_500_000, act: 3 },
   { id: 'carbure', price: 600, raw: 220, k: 3.2, minTier: 3, research: 8_000_000, act: 4 },
-  { id: 'diamant', price: 3000, raw: 1200, k: 4.5, minTier: 4, research: 800_000_000, act: 4 },
+  { id: 'diamant', price: 3000, raw: 1200, k: 4.5, minTier: 4, research: 1_500_000_000, act: 4 },
 ];
 
 /** Part du facteur matériau appliquée à chaque poste. */
@@ -101,13 +119,23 @@ export const MATERIAL_STATION_SHARE = [0.5, 1, 1, 0.3];
 // ------------------------------------------------------------- Personnel
 
 export const WORKER_SALARY = [0, 0.03, 0.10, 0.35, 1.5]; // €/s par niveau (1 à 4)
-export const TRAIN_COST = [0, 0, 100, 800, 15000]; // coût pour atteindre le niveau
-export const TRAIN_TIME = [0, 0, 30, 120, 300]; // s de jeu
-export const MAX_WORKERS_PER_CHAIN = 20;
-/** Spécialisation : +1 % toutes les 5 min sur le même poste, plafond +20 %. */
-export const SPEC_STEP_TIME = 300;
-export const SPEC_STEP = 0.01;
-export const SPEC_MAX = 0.2;
+/** On n'embauche que des manœuvres : formations, puis promotion au bout de 5 formations. */
+export const TRAINING = {
+  perTraining: 0.04,
+  perLevel: 5,
+  /** Coût de la première formation à chaque niveau, × growth par formation suivante. */
+  cost: [0, 10, 60, 600, 8000],
+  growth: 1.25,
+  time: [0, 10, 20, 40, 60],
+};
+export const PROMOTION = {
+  cost: [0, 0, 60, 400, 8000],
+  time: [0, 0, 20, 60, 150],
+};
+/** Polyvalents : moins chers, moins productifs, ils circulent et relèvent les ouvriers fatigués. */
+export const POLY = { salaryShare: 0.7, productivity: 0.75, maxPerFactory: 6 };
+/** Marcel est polyvalent mais pleinement productif. */
+export const MARCEL_PRODUCTIVITY = 1;
 
 /** Moral (à partir de l'acte II). */
 export const MORALE = {
@@ -130,6 +158,10 @@ export const MORALE = {
   /** En dessous de ce moral, un ouvrier surchargé passe la main s'il le peut. */
   tired: 0.7,
 };
+/** Ingénieur méthodes : part de la caisse qu'il peut engager par modernisation. */
+export const METHODS = { budgets: [0.25, 0.5, 0.75], period: 5 };
+/** Un rôle est signalé coûteux quand son salaire dépasse cette part des recettes. */
+export const ROLE_WARN_SHARE = 0.25;
 export const CANTEEN_COST = [0, 0, 6000, 40000, 300000, 4_000_000];
 
 /** Rôles support. */
@@ -139,11 +171,12 @@ export interface RoleDef {
   readonly salary: number;
   readonly cost: number;
 }
-export type RoleId = 'foreman' | 'supervisor' | 'hr' | 'logistics' | 'sales' | 'controller';
+export type RoleId = 'foreman' | 'supervisor' | 'hr' | 'methods' | 'logistics' | 'sales' | 'controller';
 export const ROLES: readonly RoleDef[] = [
   { id: 'foreman', act: 1, salary: 0.2, cost: 0 },
   { id: 'supervisor', act: 2, salary: 5, cost: 0 },
   { id: 'hr', act: 2, salary: 5, cost: 0 },
+  { id: 'methods', act: 2, salary: 5, cost: 0 },
   { id: 'logistics', act: 3, salary: 60, cost: 0 },
   { id: 'sales', act: 3, salary: 80, cost: 0 },
   { id: 'controller', act: 3, salary: 120, cost: 0 },
@@ -216,25 +249,25 @@ export interface ActDef {
   readonly id: number;
   /** Marché en € de ventes par seconde (au prix de base). */
   readonly market: number;
-  readonly maxChains: number;
-  /** Frais de hall de la 2e chaîne (× growth par chaîne suivante). */
+  readonly maxFactories: number;
+  /** Frais de hall de la 2e usine (× growth par usine suivante). */
   readonly hall: number;
   readonly vmax: number;
   readonly goal: { kind: 'debt' } | { kind: 'share'; share: number; hold: number } | { kind: 'cash'; amount: number } | { kind: 'none' };
 }
 
 export const ACTS: readonly ActDef[] = [
-  { id: 0, market: 4, maxChains: 1, hall: 0, vmax: 3, goal: { kind: 'debt' } },
-  { id: 1, market: 180, maxChains: 2, hall: 400, vmax: 4, goal: { kind: 'share', share: 0.5, hold: 30 } },
-  { id: 2, market: 1700, maxChains: 4, hall: 3000, vmax: 4.5, goal: { kind: 'share', share: 0.5, hold: 30 } },
-  { id: 3, market: 27000, maxChains: 8, hall: 15000, vmax: 5, goal: { kind: 'share', share: 0.5, hold: 30 } },
-  { id: 4, market: 10_000_000, maxChains: 16, hall: 100000, vmax: 5, goal: { kind: 'cash', amount: 1.5e9 } },
+  { id: 0, market: 4, maxFactories: 1, hall: 0, vmax: 3, goal: { kind: 'debt' } },
+  { id: 1, market: 220, maxFactories: 2, hall: 400, vmax: 4, goal: { kind: 'share', share: 0.5, hold: 30 } },
+  { id: 2, market: 3000, maxFactories: 4, hall: 3000, vmax: 4.5, goal: { kind: 'share', share: 0.5, hold: 30 } },
+  { id: 3, market: 32000, maxFactories: 8, hall: 15000, vmax: 5, goal: { kind: 'share', share: 0.5, hold: 30 } },
+  { id: 4, market: 10_000_000, maxFactories: 16, hall: 100000, vmax: 5, goal: { kind: 'cash', amount: 2e9 } },
   // Bac à sable : marché sans plafond pratique.
-  { id: 5, market: 1e12, maxChains: 16, hall: 100000, vmax: 5, goal: { kind: 'none' } },
+  { id: 5, market: 1e12, maxFactories: 16, hall: 100000, vmax: 5, goal: { kind: 'none' } },
 ];
 export const SANDBOX_ACT = 5;
-export const HALL_GROWTH = 1.8;
-export const CHAIN_COPY_FACTOR = 1.2;
+export const HALL_GROWTH = 1.5;
+export const FACTORY_COPY_FACTOR = 1.2;
 
 export const PROLOGUE = {
   startMoney: 20,

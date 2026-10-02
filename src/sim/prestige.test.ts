@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ACTS, KNOW_HOW, SANDBOX_ACT } from '../data/balance';
 import * as A from './actions';
 import { advance } from './engine';
-import { knowHowGain, stationCycle } from './formulas';
+import { knowHowGain, machineCycle } from './formulas';
 import { createGame } from './state';
 
 describe('savoir-faire et prestige', () => {
@@ -15,13 +15,13 @@ describe('savoir-faire et prestige', () => {
 
   it('gestes sûrs : +3 % de cadence par niveau, coût croissant', () => {
     const s = createGame(1);
-    const c0 = stationCycle(s, s.chains[0], s.chains[0].stations[1], 1);
+    const c0 = machineCycle(s, 0, 0, 1);
     s.knowHow.points = 3;
     expect(A.buyKnowHow(s, 'cadence').ok).toBe(true);
     expect(A.buyKnowHow(s, 'cadence').ok).toBe(true);
     expect(s.knowHow.points).toBe(0);
     expect(A.buyKnowHow(s, 'cadence').ok).toBe(false);
-    const c1 = stationCycle(s, s.chains[0], s.chains[0].stations[1], 1);
+    const c1 = machineCycle(s, 0, 0, 1);
     expect(c0 / c1).toBeCloseTo(1.06, 6);
   });
 

@@ -10,9 +10,9 @@ import { worldOfStation } from '../render/scene';
 import * as A from '../sim/actions';
 import type { EnergyKind, ResearchId, Result } from '../sim/actions';
 import { fmt } from './format';
-import {
-  KNOW_HOW_NAMES, LEVEL_NAMES, MACHINE_NAMES, MATERIAL_NAMES, ROLE_NAMES, STATION_NAMES, TIER_NAMES, UNIT_WORD,
-} from './text';
+import { TIER_OPERATOR_LEVEL } from '../data/balance';
+import { promotionTime, trainingTime } from '../sim/formulas';
+import { KNOW_HOW_NAMES, LEVEL_NAMES, MACHINE_NAMES, MATERIAL_NAMES, ROLE_NAMES, STATION_NAMES, TIER_NAMES } from './text';
 import { toast } from './toast';
 
 function done(r: Result, okText: string | ((r: Result) => string), sound: Parameters<typeof sfx>[0] = 'buy'): boolean {
@@ -26,64 +26,118 @@ function done(r: Result, okText: string | ((r: Result) => string), sound: Parame
   return false;
 }
 
-export function hire(ci = G.chain): void {
-  const r = A.hire(G.s, ci);
-  if (done(r, () => `👷 ${G.s.workers[G.s.workers.length - 1].name} embauché·e`, 'hire')) return;
-  if (!r.ok && r.reason === 'complet') toast('Chaîne complète : 20 ouvriers au plus', true);
+export function hire(fi = G.factory): void {
+  const r = A.hire(G.s, fi);
+  if (r.ok) {
+    const w = G.s.workers[G.s.workers.length - 1];
+    const where = w.kind === 'crank' ? `manivelle du convoyeur, chaîne ${w.line + 1}` : `${STATION_NAMES[w.station].toLowerCase()}, chaîne ${w.line + 1}`;
+    done(r, `👷 ${w.name} embauché·e : ${where}`, 'hire');
+    return;
+  }
+  done(r, '');
+  if (r.reason === 'aucun poste') toast('Aucun poste libre : achetez un poste ou un convoyeur', true);
 }
 
-export function fire(ci = G.chain, id?: number): void {
-  done(A.fire(G.s, ci, id), (r) => `${r.ok ? r.info : ''} licencié·e`, 'click');
+export function hirePoly(fi = G.factory): void {
+  const r = A.hirePoly(G.s, fi);
+  done(r, (x) => `👷 ${x.ok ? x.info : ''} embauché·e comme polyvalent·e`, 'hire');
+  if (!r.ok && r.reason === 'complet') toast('Six polyvalents au plus par usine', true);
 }
 
-export function train(level: number, ci = G.chain, id?: number): void {
-  const r = A.train(G.s, ci, level, id);
-  done(r, (x) => `🎓 ${x.ok ? x.info : ''} part en formation : ${LEVEL_NAMES[level].toLowerCase()} (${Math.round(A.trainTime(G.s, level))} s)`, 'click');
+export function fire(id: number): void {
+  done(A.fire(G.s, id), (r) => `${r.ok ? r.info : ''} licencié·e : son poste est vacant`, 'click');
 }
 
-export function addUnit(si: number, ci = G.chain): void {
-  const st = G.s.chains[ci].stations[si];
-  if (done(A.addUnit(G.s, ci, si), `${UNIT_WORD(st.tier)[0].toUpperCase()}${UNIT_WORD(st.tier).slice(1)} ajouté${st.tier ? 'e' : ''} en ${STATION_NAMES[si].toLowerCase()}`)) {
-    const p = worldOfStation(G.s, ci, si, st.units.length - 1);
+export function train(id: number): void {
+  const w = G.s.workers.find((x) => x.id === id);
+  const r = A.train(G.s, id);
+  done(r, () => `🎓 ${w?.name} part en formation (${(w?.trainings ?? 0) + 1}/5, ${Math.round(w ? trainingTime(G.s, w) : 0)} s)`, 'click');
+}
+
+export function promote(id: number): void {
+  const w = G.s.workers.find((x) => x.id === id);
+  const r = A.promote(G.s, id);
+  done(r, () => `🎖 ${w?.name} part en promotion : ${LEVEL_NAMES[Math.min(4, (w?.level ?? 0) + 1)].toLowerCase()} (${Math.round(w ? promotionTime(G.s, w) : 0)} s)`, 'click');
+}
+
+export function addUnit(si: number, fi = G.factory): void {
+  const r = A.addUnit(G.s, fi, si);
+  const f = G.s.factories[fi];
+  const l = r.ok ? +(r.info ?? 0) : 0;
+  const tier = f.lines[l]?.slots[si]?.tier ?? 0;
+  if (done(r, `${STATION_NAMES[si]} ajoutée à la chaîne ${l + 1} : ${MACHINE_NAMES[tier][si].toLowerCase()}`)) {
+    const p = worldOfStation(G.s, fi, l, si);
     dust(p.x, p.y + 16);
   }
 }
 
-export function upgradeTool(si: number, ci = G.chain): void {
-  const st = G.s.chains[ci].stations[si];
-  if (done(A.upgradeTool(G.s, ci, si), `Outillage de ${STATION_NAMES[si].toLowerCase()} amélioré : niveau ${st.tool}, +25 % de vitesse`)) {
-    st.units.forEach((_, i) => {
-      const p = worldOfStation(G.s, ci, si, i);
-      sparks(p.x, p.y + 4, 6, '#ffe9b0');
-    });
+export function upgradeTool(tier: number, si: number): void {
+  const r = A.upgradeTool(G.s, tier, si);
+  const lvl = A.toolLevel(G.s, tier, si);
+  if (done(r, `Outillage ${STATION_NAMES[si].toLowerCase()} (${TIER_NAMES[tier].toLowerCase()}) : niveau ${lvl}, toutes les machines identiques`)) {
+    G.s.factories.forEach((f, fi) => f.lines.forEach((l, li) => {
+      const m = l.slots[si];
+      if (m && m.tier === tier) {
+        const p = worldOfStation(G.s, fi, li, si);
+        sparks(p.x, p.y + 4, 4, '#ffe9b0');
+      }
+    }));
   }
 }
 
-export function modernize(si: number, ci = G.chain): void {
-  const st = G.s.chains[ci].stations[si];
-  const next = st.tier + 1;
-  if (done(A.modernize(G.s, ci, si), `${STATION_NAMES[si]} modernisée : ${MACHINE_NAMES[next][si].toLowerCase()} (${TIER_NAMES[next].toLowerCase()})`, 'build')) {
-    G.s.chains[ci].stations[si].units.forEach((_, i) => {
-      const p = worldOfStation(G.s, ci, si, i);
-      dust(p.x, p.y + 16);
-    });
+export function modernize(si: number, fi = G.factory): void {
+  const tgt = A.modernizeTarget(G.s, fi, si);
+  if (!tgt) return;
+  const next = tgt.tier + 1;
+  const r = A.modernize(G.s, fi, si);
+  if (done(r, `${STATION_NAMES[si]} de la chaîne ${tgt.line + 1} modernisée : ${MACHINE_NAMES[next][si].toLowerCase()}`, 'build')) {
+    const p = worldOfStation(G.s, fi, tgt.line, si);
+    dust(p.x, p.y + 16);
+    const m = G.s.factories[fi].lines[tgt.line].slots[si]!;
+    const w = G.s.workers.find((x) => x.id === m.post);
+    if (w && next < 3 && w.level < TIER_OPERATOR_LEVEL[next]) toast(`${w.name} doit être promu·e ${LEVEL_NAMES[TIER_OPERATOR_LEVEL[next]].toLowerCase()} pour la conduire`, true);
   }
 }
 
-export function repair(si: number, ui: number, ci = G.chain): void {
-  done(A.repair(G.s, ci, si, ui), (r) => `🔧 Réparation en cours : ${STATION_NAMES[si].toLowerCase()} n°${ui + 1} (${fmt(r.ok ? r.cost ?? 0 : 0)} €)`, 'repair');
+export function buyConveyor(l: number, fi = G.factory): void {
+  if (done(A.buyConveyor(G.s, fi, l), `Convoyeur installé sur la chaîne ${l + 1} : il faut un ouvrier à la manivelle`, 'build')) {
+    const p = worldOfStation(G.s, fi, l, 0);
+    dust(p.x - 40, p.y + 28);
+  }
 }
 
-export function service(si: number, ui: number, ci = G.chain): void {
-  done(A.service(G.s, ci, si, ui), `🔧 Révision en cours : ${STATION_NAMES[si].toLowerCase()} n°${ui + 1}`, 'repair');
+export function repair(l: number, si: number, fi = G.factory): void {
+  done(A.repair(G.s, fi, l, si), (r) => `🔧 Réparation en cours : ${STATION_NAMES[si].toLowerCase()}, chaîne ${l + 1} (${fmt(r.ok ? r.cost ?? 0 : 0)} €)`, 'repair');
 }
 
-export function setMaterial(m: number, ci = G.chain): void {
-  done(A.setMaterial(G.s, ci, m), `Production en ${MATERIAL_NAMES[m].toLowerCase()}${G.s.chains.length > 1 ? ` (chaîne ${ci + 1})` : ''}`, 'click');
+export function service(l: number, si: number, fi = G.factory): void {
+  done(A.service(G.s, fi, l, si), `🔧 Révision en cours : ${STATION_NAMES[si].toLowerCase()}, chaîne ${l + 1}`, 'repair');
 }
 
-export function buyChain(): void {
-  if (done(A.buyChain(G.s), `🏭 Nouvelle chaîne bâtie : chaîne ${G.s.chains.length}`, 'build')) G.chain = G.s.chains.length - 1;
+export function setMaterial(m: number, fi = G.factory): void {
+  done(A.setMaterial(G.s, fi, m), `Production en ${MATERIAL_NAMES[m].toLowerCase()}${G.s.factories.length > 1 ? ` (usine ${fi + 1})` : ''}`, 'click');
+}
+
+export function buyFactory(): void {
+  if (done(A.buyFactory(G.s), `🏭 Nouvelle usine bâtie : usine ${G.s.factories.length}`, 'build')) G.factory = G.s.factories.length - 1;
+}
+
+export function dismissRole(id: RoleId): void {
+  done(A.dismissRole(G.s, id), `📋 ${ROLE_NAMES[id]} congédié·e`, 'click');
+}
+
+export function setMethodsTarget(st: number, tier: number): void {
+  A.setMethodsTarget(G.s, st, tier);
+  sfx('click');
+}
+
+export function setMethodsBudget(k: number): void {
+  A.setMethodsBudget(G.s, k);
+  sfx('click');
+}
+
+export function setMethodsActive(on: boolean): void {
+  done(A.setMethodsActive(G.s, on), on ? '📐 Consigne appliquée : l’ingénieur méthodes modernise' : '📐 Consigne suspendue', 'click');
 }
 
 export function buyEnergy(kind: EnergyKind): void {
@@ -144,7 +198,7 @@ export function move(): boolean {
   if (r.ok) {
     sfx('move');
     toast(`🚚 Déménagé : +${r.info} savoir-faire`);
-    G.chain = 0;
+    G.factory = 0;
     return true;
   }
   sfx('denied');
@@ -156,7 +210,7 @@ export function newSite(): boolean {
   if (r.ok) {
     sfx('move');
     toast(`🏗 Nouveau site : +${r.info} savoir-faire`);
-    G.chain = 0;
+    G.factory = 0;
     return true;
   }
   sfx('denied');

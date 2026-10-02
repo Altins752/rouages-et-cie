@@ -63,11 +63,11 @@ export function installDebug(h: Hooks): void {
       }
       silenceStory(s);
       G.s = s;
-      G.chain = 0;
+      G.factory = 0;
       closeOverlay();
       telexClose();
       h.begin();
-      return { act: s.act, chains: s.chains.length, money: s.money };
+      return { act: s.act, factories: s.factories.length, money: s.money };
     },
     absence: h.absence,
     finale: h.startFinale,

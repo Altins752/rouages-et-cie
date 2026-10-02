@@ -192,6 +192,16 @@ kbd {
 .unit .w i { display: block; height: 100%; width: 0; background: #57d987; }
 .unit.broken { outline: 2px solid #ff5a4a; }
 .unit.svc { outline: 2px dashed #ffb02e; }
+.unit.vac { outline: 1px dashed #ffd84a; color: #ffd84a; }
+.card.wk { padding: 8px 10px; gap: 6px; }
+.card.wk .row { gap: 8px; align-items: center; }
+.card.wk .nm { font-size: 14px; }
+.card.wk .ef { font-size: 12px; }
+.dots { font: 11px "Share Tech Mono", ui-monospace, monospace; color: var(--y); letter-spacing: 1px; vertical-align: 1px; }
+.btns.mini { flex: 0 0 auto; flex-wrap: nowrap; }
+.btns.mini .buy { min-width: 78px; padding: 5px 8px 4px; }
+.btns.mini .buy .c { font-size: 12.5px; }
+.btns.mini .buy small { font-size: 10.5px; }
 .btns { display: flex; gap: 7px; flex-wrap: wrap; }
 .buy {
   position: relative; flex: 1 1 auto; min-width: 92px; border-radius: 5px; padding: 8px 10px 6px; cursor: pointer; display: flex; flex-direction: column; align-items: center; line-height: 1.12;

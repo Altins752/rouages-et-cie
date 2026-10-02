@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ACTS, MATERIALS, TRAIN_TIME } from '../data/balance';
+import { ACTS, MATERIALS, PROMOTION } from '../data/balance';
 import { storyTick } from '../story/director';
 import { REPORT_PERIOD } from '../story/script';
 import * as A from './actions';
@@ -18,8 +18,8 @@ function act3(seed = 6): GameState {
   return s;
 }
 
-function robotize(s: GameState, ci = 0): void {
-  for (let si = 0; si < 4; si++) while (s.chains[ci].stations[si].tier < 3) A.modernize(s, ci, si);
+function robotize(s: GameState, fi = 0): void {
+  for (let st = 0; st < 4; st++) while (s.factories[fi].lines[0].slots[st]!.tier < 3) A.modernize(s, fi, st);
 }
 
 describe('acte III : robotisation', () => {
@@ -29,9 +29,10 @@ describe('acte III : robotisation', () => {
       robotize(s);
       s.workers = [];
       if (tech) {
-        A.hire(s, 0);
+        A.hirePoly(s, 0);
         s.workers[0].level = 4;
       }
+      expect(A.freePosts(s, 0).length).toBe(0);
       advance(s, 300, { red: false }, 0.1);
       return s.stats.produced;
     };
@@ -43,22 +44,29 @@ describe('acte III : robotisation', () => {
 
   it('le titane exige le semi-automatique à la frappe et au taraudage', () => {
     const s = act3();
-    expect(materialOk(s, s.chains[0], 4)).toBe(false);
+    const f = s.factories[0];
+    expect(materialOk(s, f, 4)).toBe(false);
     A.modernize(s, 0, 1);
     A.modernize(s, 0, 1);
     A.modernize(s, 0, 2);
     A.modernize(s, 0, 2);
-    expect(materialOk(s, s.chains[0], 4)).toBe(true);
+    expect(materialOk(s, f, 4)).toBe(true);
+    // une frappe ajoutée au palier courant le reste
+    A.addUnit(s, 0, 1);
+    expect(materialOk(s, f, 4)).toBe(true);
   });
 
-  it('reconvertir en technicien compte pour la fin ; licencier aussi', () => {
+  it('promouvoir en technicien compte pour la fin ; licencier aussi', () => {
     const s = act3();
     for (let i = 0; i < 3; i++) A.hire(s, 0);
-    s.workers[1].level = 3;
-    expect(A.train(s, 0, 4, s.workers[1].id).ok).toBe(true);
-    advance(s, TRAIN_TIME[4] + 1, { red: false }, 0.5);
+    const w = s.workers[1];
+    w.level = 3;
+    w.trainings = 5;
+    expect(A.promote(s, w.id).ok).toBe(true);
+    advance(s, PROMOTION.time[4] + 1, { red: false }, 0.5);
+    expect(w.level).toBe(4);
     expect(s.stats.retrained).toBe(1);
-    A.fire(s, 0);
+    A.fire(s, s.workers[2].id);
     expect(s.stats.laidOff).toBe(1);
   });
 

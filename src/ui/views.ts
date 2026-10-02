@@ -1,62 +1,83 @@
 /** Contenu des onglets du panneau. Chaque vue renvoie du HTML stable et des valeurs à jour. */
 import {
-  ACTS, CONTRACTS, ENERGY, KNOW_HOW, MATERIALS, MAX_UNITS, MAX_WORKERS_PER_CHAIN, RESEARCH_EXTRA, ROBOT_TIER, ROLES,
-  TIER_COUNT, TIER_MIN_ACT, TIER_OPERATOR_LEVEL, TIER_RESEARCH, TOOL_MAX, WEAR, WORKER_SALARY,
+  ACTS, CONTRACTS, ENERGY, KNOW_HOW, LINES, MATERIALS, METHODS, POLY, RESEARCH_EXTRA, ROBOT_TIER, ROLES, ROLE_WARN_SHARE,
+  TIER_COUNT, TIER_MIN_ACT, TIER_OPERATOR_LEVEL, TIER_RESEARCH, TOOL_MAX, TRAINING, WEAR,
 } from '../data/balance';
 import type { KnowHowId, RoleId } from '../data/balance';
 import { G } from '../game';
 import type { Tab } from '../game';
 import * as A from '../sim/actions';
-import { bestCandidate, firstStepCost } from '../sim/advisor';
-import { bottleneckOf, stationCapacities } from '../sim/analysis';
-import { knowHowCost, materialOk, modernizeCost, priceMult, repLevel, specBonus, toolCost } from '../sim/formulas';
-import type { GameState } from '../sim/types';
+import { bestCandidate } from '../sim/advisor';
+import { estimateFactory } from '../sim/analysis';
+import type { FactoryEstimate } from '../sim/analysis';
+import { conveyorActive, salaryOf } from '../sim/engine';
+import {
+  canPromote, canTrain, conveyorCost, knowHowCost, materialOk, priceMult, promotionCost, repLevel, skill, toolCost,
+  toolSpeed, trainingCost,
+} from '../sim/formulas';
+import type { GameState, Worker } from '../sim/types';
 import * as U from './actions';
 import { esc } from './dom';
 import { fmt, fmtP, mmss, pct } from './format';
 import type { View } from './panel';
 import { dataView } from './data';
+import { revenueRate } from './rates';
 import {
-  ACT_NAMES, KNOW_HOW_DESC, KNOW_HOW_NAMES, LEVEL_NAMES, LEVEL_PLURAL, MACHINE_NAMES, MARKET_NAMES, MATERIAL_DESC,
-  MATERIAL_NAMES, ROLE_DATA, ROLE_DECISION, ROLE_NAMES, STATION_ICONS, STATION_NAMES, STATION_ROLE, TIER_NAMES, UNIT_WORD,
+  ACT_NAMES, KIND_NAMES, KNOW_HOW_DESC, KNOW_HOW_NAMES, LEVEL_NAMES, MACHINE_NAMES, MARKET_NAMES, MATERIAL_DESC,
+  MATERIAL_NAMES, ROLE_DATA, ROLE_DECISION, ROLE_NAMES, STATION_ICONS, STATION_NAMES, STATION_ROLE, TIER_NAMES, TIER_SHORT,
 } from './text';
 
 const lock = '🔒';
 const euros = (n: number) => `${fmt(n)} €`;
 
-function chainSel(s: GameState): string {
-  if (s.chains.length < 2) return '';
-  let h = '<div class="seg" style="margin:4px 2px 10px" role="group" aria-label="Chaîne affichée">';
-  s.chains.forEach((c, i) => {
-    const broken = c.stations.some((st) => st.units.some((u) => u.broken));
-    h += `<button type="button" data-act="chain-sel" data-i="${i}" data-fk="cs${i}" class="${G.chain === i ? 'on' : ''}">Chaîne ${i + 1}${broken ? ' ⚠' : ''}</button>`;
+function factorySel(s: GameState): string {
+  if (s.factories.length < 2) return '';
+  let h = '<div class="seg" style="margin:4px 2px 10px" role="group" aria-label="Usine affichée">';
+  s.factories.forEach((f, i) => {
+    const broken = f.lines.some((l) => l.slots.some((m) => m && m.broken));
+    h += `<button type="button" data-act="factory-sel" data-i="${i}" data-fk="fs${i}" class="${G.factory === i ? 'on' : ''}">Usine ${i + 1}${broken ? ' ⚠' : ''}</button>`;
   });
   return h + '</div>';
 }
 
+
+export function roleSalaries(s: GameState): number {
+  return ROLES.reduce((a, r) => a + (s.roles[r.id] ? r.salary : 0), 0);
+}
+
 // ------------------------------------------------------------------ Conseil du superviseur
 
-let recCache = { t: -1e9, key: '', chain: -1 };
-function recommendation(s: GameState): { key: string; chain: number } {
-  if (!s.roles.supervisor) return { key: '', chain: -1 };
+let recCache = { t: -1e9, key: '', factory: -1 };
+function recommendation(s: GameState): { key: string; factory: number } {
+  if (!s.roles.supervisor) return { key: '', factory: -1 };
   const now = performance.now();
   if (now - recCache.t < 2500) return recCache;
   recCache.t = now;
   const c = bestCandidate(s, 3600);
   recCache.key = '';
-  recCache.chain = -1;
+  recCache.factory = -1;
   if (c) {
     const st = c.steps.find((x) => x.kind !== 'hire' && x.kind !== 'material') ?? c.steps[0];
-    recCache.chain = st.chain;
+    recCache.factory = st.factory;
     if (st.kind === 'unit') recCache.key = `u${st.station}`;
-    else if (st.kind === 'tool') recCache.key = `t${st.station}`;
+    else if (st.kind === 'tool') recCache.key = `t${st.tier}${st.station}`;
     else if (st.kind === 'modernize') recCache.key = `m${st.station}`;
-    else if (st.kind === 'chain') recCache.key = 'chain';
+    else if (st.kind === 'conveyor') recCache.key = `cv${st.line}`;
+    else if (st.kind === 'factory') recCache.key = 'factory';
     else if (st.kind === 'material') recCache.key = `mat${st.material}`;
+    else if (st.kind === 'train') recCache.key = `tr${st.worker}`;
+    else if (st.kind === 'poly') recCache.key = 'poly';
     else recCache.key = 'hire';
-    void firstStepCost;
   }
   return recCache;
+}
+
+// ------------------------------------------------------------------ Estimation partagée (une par image)
+
+let estCache: { t: number; s: GameState | null; f: number; e: FactoryEstimate | null } = { t: -1, s: null, f: -1, e: null };
+function estimate(s: GameState, fi: number): FactoryEstimate {
+  if (estCache.s !== s || estCache.t !== s.t || estCache.f !== fi || !estCache.e) estCache = { t: s.t, s, f: fi, e: estimateFactory(s, fi) };
+  return estCache.e!;
 }
 
 // ------------------------------------------------------------------ Atelier
@@ -65,86 +86,125 @@ function vAtelier(s: GameState): View {
   const k: Record<string, string> = {};
   const d: Record<string, boolean> = {};
   const w: Record<string, number> = {};
-  if (G.chain >= s.chains.length) G.chain = 0;
-  const ci = G.chain;
-  const c = s.chains[ci];
+  if (G.factory >= s.factories.length) G.factory = 0;
+  const fi = G.factory;
+  const f = s.factories[fi];
   const rec = recommendation(s);
-  const recOn = (key: string) => rec.chain === ci && rec.key === key;
-  let sig = `A${ci}|${s.chains.length}|${c.material}|${s.act}|${s.roles.foreman ? 1 : 0}${s.roles.supervisor ? 1 : 0}|${s.research.tier}|${s.research.materials.join('')}|${rec.chain}${rec.key}|${s.energy.solar}${s.energy.wind}${s.energy.battery}`;
-  let h = chainSel(s);
-  h += `<div class="sec">Matériau<span>${MATERIAL_NAMES[c.material]} · ${fmtP(MATERIALS[c.material].price)} € la pièce</span></div><div class="seg" style="margin:0 2px 10px">`;
+  const recOn = (key: string) => rec.factory === fi && rec.key === key;
+  const est = s.roles.foreman ? estimate(s, fi) : null;
+  let sig = `A${fi}|${s.factories.length}|${f.material}|${s.act}|${s.roles.foreman ? 1 : 0}${s.roles.supervisor ? 1 : 0}|${s.research.tier}|${s.research.materials.join('')}|${rec.factory}${rec.key}|${s.energy.solar}${s.energy.wind}${s.energy.battery}`;
+  let h = factorySel(s);
+  h += `<div class="sec">Matériau<span>${MATERIAL_NAMES[f.material]} · ${fmtP(MATERIALS[f.material].price)} € la pièce</span></div><div class="seg" style="margin:0 2px 10px">`;
   MATERIALS.forEach((m, i) => {
     if (i > 0 && !s.research.materials[i] && s.act < m.act) return;
-    const ok = materialOk(s, c, i);
+    const ok = materialOk(s, f, i);
     sig += ok ? 1 : 0;
-    const why = !s.research.materials[i] ? 'à rechercher (R&D)' : `exige frappe et taraudage ${TIER_NAMES[m.minTier].toLowerCase()}s`;
-    h += `<button type="button" data-act="mat" data-i="${i}" data-fk="mat${i}" class="${c.material === i ? 'on' : ''}${recOn(`mat${i}`) ? ' rec' : ''}" ${ok ? '' : `disabled title="${why}"`}>${MATERIAL_NAMES[i]}</button>`;
+    const why = !s.research.materials[i] ? 'à rechercher (R&D)' : `exige frappes et taraudages ${TIER_NAMES[m.minTier].toLowerCase()}s`;
+    h += `<button type="button" data-act="mat" data-i="${i}" data-fk="mat${i}" class="${f.material === i ? 'on' : ''}${recOn(`mat${i}`) ? ' rec' : ''}" ${ok ? '' : `disabled title="${why}"`}>${MATERIAL_NAMES[i]}</button>`;
   });
   h += '</div>';
   if (s.act === 0 && s.stats.sold < 3) {
-    h += '<div class="note">Marcel fait tout, seul : il marche d’un établi à l’autre. Embauchez pour diviser le travail (onglet Équipe), puis regardez où les pièces s’accumulent.</div>';
+    h += '<div class="note">Marcel fait tout, seul : il marche d’un établi à l’autre. Embauchez (onglet Équipe) : chaque nouvel ouvrier prend un poste et n’en bouge plus. Regardez ensuite où les pièces s’accumulent.</div>';
   }
-  const caps = stationCapacities(s, c);
-  const b = bottleneckOf(s, c);
-  c.stations.forEach((st, si) => {
-    sig += `|${si}${st.tier}${st.tool}${st.units.length}${st.units.map((u) => (u.broken ? (u.service > 0 ? 'r' : 'b') : u.service > 0 ? 's' : u.wear > 0.4 ? 'w' : 'o')).join('')}`;
-    const human = st.tier < ROBOT_TIER;
-    h += `<div class="card col"><div class="row"><div class="ic" aria-hidden="true">${STATION_ICONS[si]}</div><div class="info"><div class="nm">${STATION_NAMES[si]} <span class="tag ${s.roles.foreman && si === b ? 'red' : ''}" data-k="g${si}"></span></div>`;
-    h += `<div class="ef" data-k="c${si}"></div></div></div><div class="units">`;
-    for (let i = 0; i < MAX_UNITS; i++) {
-      const u = st.units[i];
-      if (!u) {
-        h += '<div class="unit empty">libre</div>';
-        continue;
+  // Chaînes
+  h += `<div class="sec">Chaînes<span>${f.lines.filter((l) => l.slots.some(Boolean)).length}/${LINES} en service</span></div>`;
+  f.lines.forEach((line, l) => {
+    const n = line.slots.filter(Boolean).length;
+    if (n === 0 && l > 0 && !f.lines[l - 1].slots.some(Boolean)) return;
+    const active = conveyorActive(s, line);
+    sig += `|L${l}${line.conveyor ? (line.crank >= 0 ? 'C' : 'c') : ''}${line.slots.map((m) => (m ? `${m.tier}${m.post >= 0 ? 'p' : 'v'}${m.broken ? (m.service > 0 ? 'r' : 'b') : m.service > 0 ? 's' : m.wear > 0.4 ? 'w' : 'o'}` : '-')).join('')}`;
+    h += `<div class="card col"><div class="row"><div class="ic" aria-hidden="true">⛓️</div><div class="info"><div class="nm">Chaîne ${l + 1} <span class="tag" data-k="lt${l}"></span></div><div class="ef" data-k="lc${l}"></div></div></div><div class="units">`;
+    line.slots.forEach((m, st) => {
+      if (!m) {
+        h += `<div class="unit empty">${STATION_NAMES[st]}</div>`;
+        return;
       }
-      const cls = u.broken ? 'broken' : u.service > 0 ? 'svc' : '';
-      h += `<div class="unit ${cls}" title="${MACHINE_NAMES[st.tier][si]}"><span data-k="ul${si}${i}"></span>`;
-      if (st.tier > 0) h += `<div class="w"><i data-w="w${si}${i}" style="background:${u.wear > 0.7 ? '#ff5a4a' : u.wear > 0.5 ? '#ffb02e' : '#57d987'}"></i></div>`;
+      const cls = m.broken ? 'broken' : m.service > 0 ? 'svc' : m.tier < ROBOT_TIER && m.post < 0 ? 'vac' : '';
+      h += `<div class="unit ${cls}" title="${MACHINE_NAMES[m.tier][st]}"><span data-k="ul${l}${st}"></span>`;
+      if (m.tier > 0) h += `<div class="w"><i data-w="w${l}${st}" style="background:${m.wear > 0.7 ? '#ff5a4a' : m.wear > 0.5 ? '#ffb02e' : '#57d987'}"></i></div>`;
       h += '</div>';
-      const state = u.broken ? (u.service > 0 ? `répar. ${Math.ceil(u.service)} s` : 'en panne') : u.service > 0 ? `révision ${Math.ceil(u.service)} s` : s.roles.supervisor && st.tier > 0 ? `usure ${pct(u.wear)}` : TIER_NAMES[st.tier];
-      k[`ul${si}${i}`] = state;
-      w[`w${si}${i}`] = s.roles.supervisor ? u.wear : 0;
-    }
+      const rate = est ? est.rate[l][st] : -1;
+      const state = m.broken ? (m.service > 0 ? `répar. ${Math.ceil(m.service)} s` : 'en panne') : m.service > 0 ? `révision ${Math.ceil(m.service)} s` : m.tier < ROBOT_TIER && m.post < 0 ? 'vacant' : est ? (rate > 0 ? `${fmtP(rate)}/s` : 'arrêt') : TIER_SHORT[m.tier];
+      k[`ul${l}${st}`] = `${STATION_NAMES[st].slice(0, 4)}. ${state}`;
+      w[`w${l}${st}`] = s.roles.supervisor ? m.wear : 0;
+    });
     h += '</div><div class="btns">';
-    if (st.units.length < MAX_UNITS) {
-      const cost = A.addUnitCost(s, ci, si);
-      h += `<button class="buy${recOn(`u${si}`) ? ' rec' : ''}" type="button" data-act="unit" data-i="${si}" data-b="u${si}" data-fk="u${si}"><span class="c" data-k="uc${si}"></span><small>+1 ${UNIT_WORD(st.tier)}</small></button>`;
-      k[`uc${si}`] = euros(cost);
-      d[`u${si}`] = s.money < cost;
+    if (!line.conveyor && n >= 2 && line.slots.some((m) => m && m.tier < ROBOT_TIER)) {
+      const cost = conveyorCost(f, l);
+      h += `<button class="buy${recOn(`cv${l}`) ? ' rec' : ''}" type="button" data-act="conveyor" data-i="${l}" data-b="cv${l}" data-fk="cv${l}"><span class="c">${euros(cost)}</span><small>Convoyeur à manivelle</small></button>`;
+      d[`cv${l}`] = s.money < cost;
     }
-    if (st.tool < TOOL_MAX) {
-      const cost = toolCost(st.tier, si, st.tool);
-      h += `<button class="buy${recOn(`t${si}`) ? ' rec' : ''}" type="button" data-act="tool" data-i="${si}" data-b="t${si}" data-fk="t${si}"><span class="c">${euros(cost)}</span><small>Outillage ${st.tool + 1}/${TOOL_MAX} (+25 %)</small></button>`;
-      d[`t${si}`] = s.money < cost;
-    }
-    if (A.tierAllowed(s, st.tier + 1)) {
-      const cost = modernizeCost(st, si);
-      h += `<button class="buy${recOn(`m${si}`) ? ' rec' : ''}" type="button" data-act="modern" data-i="${si}" data-b="m${si}" data-fk="m${si}" title="${MACHINE_NAMES[st.tier + 1][si]}"><span class="c">${euros(cost)}</span><small>Moderniser : ${TIER_NAMES[st.tier + 1].toLowerCase()}</small></button>`;
-      d[`m${si}`] = s.money < cost;
-    }
-    st.units.forEach((u, i) => {
-      if (u.broken && u.service <= 0) {
-        h += `<button class="buy alt" type="button" data-act="repair" data-i="${si}" data-u="${i}" data-fk="r${si}${i}"><span class="c">${euros(A.repairCost(s, ci, si, i))}</span><small>Réparer n°${i + 1}</small></button>`;
-      } else if (!u.broken && u.service <= 0 && st.tier > 0 && u.wear >= 0.4 && !s.research.preventive) {
-        h += `<button class="buy plain" type="button" data-act="service" data-i="${si}" data-u="${i}" data-fk="s${si}${i}"><span class="c">${euros(A.serviceCost(s, ci, si, i))}</span><small>Réviser n°${i + 1}</small></button>`;
+    line.slots.forEach((m, st) => {
+      if (!m) return;
+      if (m.broken && m.service <= 0) {
+        h += `<button class="buy alt" type="button" data-act="repair" data-l="${l}" data-i="${st}" data-fk="r${l}${st}"><span class="c">${euros(A.repairCost(s, fi, l, st))}</span><small>Réparer ${STATION_NAMES[st].toLowerCase()}</small></button>`;
+      } else if (!m.broken && m.service <= 0 && m.tier > 0 && m.wear >= 0.4 && !s.research.preventive) {
+        h += `<button class="buy plain" type="button" data-act="service" data-l="${l}" data-i="${st}" data-fk="s${l}${st}"><span class="c">${euros(A.serviceCost(s, fi, l, st))}</span><small>Réviser ${STATION_NAMES[st].toLowerCase()}</small></button>`;
       }
     });
     h += '</div></div>';
-    const cap = s.roles.foreman ? `${fmtP(caps[si])} pièce/s` : STATION_ROLE[si];
-    const ops = human ? ` · ${LEVEL_NAMES[TIER_OPERATOR_LEVEL[st.tier]].toLowerCase()} requis` : ' · sans opérateur';
-    k[`g${si}`] = s.roles.foreman ? (si === b ? 'goulot' : 'ok') : TIER_NAMES[st.tier];
-    k[`c${si}`] = `${cap} · ${st.units.length}/${MAX_UNITS} ${UNIT_WORD(st.tier, true)}${st.tool ? ` · outillage ${st.tool}` : ''}${st.tier > 0 ? ops : ''}`;
+    const b = est ? est.lineBottleneck[l] : -1;
+    const robotsOnly = line.slots.every((m) => !m || m.tier >= ROBOT_TIER);
+    const conv = robotsOnly ? 'robots : transfert automatique' : line.conveyor ? (active ? 'convoyeur en marche' : line.crank < 0 ? 'convoyeur sans ouvrier à la manivelle' : 'convoyeur à l’arrêt') : 'pièces portées à la main';
+    k[`lt${l}`] = `${n}/4 postes`;
+    k[`lc${l}`] = `${est && b >= 0 ? `${fmtP(est.flow[l][3] || est.rate[l][b])} pièce/s · goulot : ${STATION_NAMES[b].toLowerCase()} · ` : ''}${line.produced ? `${fmt(line.produced)} écrous · ` : ''}${conv}`;
   });
-  // Chaînes
+  if (!s.roles.foreman && s.act >= 1) h += '<div class="note">Le contremaître (onglet Équipe) affiche la cadence de chaque poste et le goulot de chaque chaîne.</div>';
+  // Postes : acheter, moderniser
+  h += `<div class="sec">Postes<span>achat un par un, à la première chaîne qui ne l’a pas</span></div>`;
+  for (let st = 0; st < 4; st++) {
+    const count = A.stationCount(f, st);
+    const tgt = A.modernizeTarget(s, fi, st);
+    sig += `|P${st}${count}${tgt ? `${tgt.line}${tgt.tier}` : ''}`;
+    h += `<div class="card col"><div class="row"><div class="ic" aria-hidden="true">${STATION_ICONS[st]}</div><div class="info"><div class="nm">${STATION_NAMES[st]} <span class="tag">${count}/${LINES}</span></div><div class="ef" data-k="pc${st}"></div></div></div><div class="btns">`;
+    if (count < LINES) {
+      const cost = A.addUnitCost(s, fi, st);
+      const tier = A.newUnitTier(f, st);
+      const l = f.lines.findIndex((x) => !x.slots[st]);
+      h += `<button class="buy${recOn(`u${st}`) ? ' rec' : ''}" type="button" data-act="unit" data-i="${st}" data-b="u${st}" data-fk="u${st}"><span class="c">${euros(cost)}</span><small>+1 ${tier ? 'machine' : 'établi'} → chaîne ${l + 1}</small></button>`;
+      d[`u${st}`] = s.money < cost;
+    }
+    if (tgt) {
+      h += `<button class="buy${recOn(`m${st}`) ? ' rec' : ''}" type="button" data-act="modern" data-i="${st}" data-b="m${st}" data-fk="m${st}" title="${MACHINE_NAMES[tgt.tier + 1][st]}"><span class="c">${euros(tgt.cost)}</span><small>Moderniser chaîne ${tgt.line + 1} : ${TIER_NAMES[tgt.tier + 1].toLowerCase()}</small></button>`;
+      d[`m${st}`] = s.money < tgt.cost;
+    }
+    h += '</div></div>';
+    const tiers = f.lines.map((x) => x.slots[st]).filter((m) => m).map((m) => TIER_SHORT[m!.tier]);
+    const req = tgt && tgt.tier + 1 < ROBOT_TIER ? ` · ${LEVEL_NAMES[TIER_OPERATOR_LEVEL[tgt.tier + 1]].toLowerCase()} requis après modernisation` : '';
+    k[`pc${st}`] = `${STATION_ROLE[st]}${tiers.length ? ` · ${tiers.join(', ')}` : ''}${req}`;
+  }
+  // Outillage : global
+  h += `<div class="sec">Outillage<span>vaut pour toutes les machines identiques</span></div>`;
+  for (let st = 0; st < 4; st++) {
+    const tiers = A.tiersInUse(s, st);
+    if (!tiers.length) continue;
+    h += `<div class="card col"><div class="row"><div class="ic" aria-hidden="true">🔧</div><div class="info"><div class="nm">${STATION_NAMES[st]}</div><div class="ef" data-k="to${st}"></div></div></div><div class="btns">`;
+    const parts: string[] = [];
+    for (const t of tiers) {
+      const lvl = A.toolLevel(s, t, st);
+      sig += `|T${st}${t}${lvl >= TOOL_MAX ? 'x' : ''}`;
+      parts.push(`${TIER_SHORT[t]} ${lvl}/${TOOL_MAX} (×${fmtP(toolSpeed(lvl))})`);
+      if (lvl >= TOOL_MAX || t > s.research.tier) continue;
+      const cost = toolCost(t, st, lvl);
+      const gain = toolSpeed(lvl + 1) / toolSpeed(lvl) - 1;
+      h += `<button class="buy${recOn(`t${t}${st}`) ? ' rec' : ''}" type="button" data-act="tool" data-t="${t}" data-i="${st}" data-b="t${t}${st}" data-fk="t${t}${st}"><span class="c" data-k="tc${t}${st}"></span><small data-k="tg${t}${st}"></small></button>`;
+      k[`tc${t}${st}`] = euros(cost);
+      k[`tg${t}${st}`] = `${tiers.length > 1 ? `${TIER_SHORT[t]} · ` : ''}niv. ${lvl + 1} · +${(gain * 100).toFixed(1).replace('.', ',')} %`;
+      d[`t${t}${st}`] = s.money < cost;
+    }
+    h += '</div></div>';
+    k[`to${st}`] = parts.join(' · ');
+  }
+  // Usines
   if (s.act >= 1) {
-    const max = A.maxChains(s);
-    h += `<div class="sec">Chaînes<span>${s.chains.length}/${max} sur ce site</span></div>`;
-    if (s.chains.length < max) {
-      const cost = A.chainCost(s);
-      h += `<div class="card${recOn('chain') ? ' rec' : ''}"><div class="ic" aria-hidden="true">🏭</div><div class="info"><div class="nm">Nouvelle chaîne</div><div class="vis">Un hall de plus, équipé comme votre meilleure chaîne. Les ouvriers sont à embaucher.</div></div>`;
-      h += `<button class="buy${rec.key === 'chain' ? ' rec' : ''}" type="button" data-act="buy-chain" data-b="chain" data-fk="chain"><span class="c">${euros(cost)}</span><small>Bâtir</small></button></div>`;
-      d.chain = s.money < cost;
-    } else h += `<div class="note">${lock} Site plein : ${max} chaîne${max > 1 ? 's' : ''} au plus${s.act < 4 ? '. Un site plus grand viendra avec le prochain marché.' : '.'}</div>`;
+    const max = A.maxFactories(s);
+    h += `<div class="sec">Usines<span>${s.factories.length}/${max} sur ce site</span></div>`;
+    if (s.factories.length < max) {
+      const cost = A.factoryCost(s);
+      h += `<div class="card${recOn('factory') ? ' rec' : ''}"><div class="ic" aria-hidden="true">🏭</div><div class="info"><div class="nm">Nouvelle usine</div><div class="vis">Un hall de plus, équipé comme votre meilleure usine (machines et convoyeurs). Les ouvriers sont à embaucher.</div></div>`;
+      h += `<button class="buy${recOn('factory') ? ' rec' : ''}" type="button" data-act="buy-factory" data-b="factory" data-fk="factory"><span class="c">${euros(cost)}</span><small>Bâtir</small></button></div>`;
+      d.factory = s.money < cost;
+    } else h += `<div class="note">${lock} Site plein : ${max} usine${max > 1 ? 's' : ''} au plus${s.act < 4 ? '. Un site plus grand viendra avec le prochain marché.' : '.'}</div>`;
   }
   // Énergie
   if (s.act >= ENERGY.act) {
@@ -171,63 +231,132 @@ function vAtelier(s: GameState): View {
 
 // ------------------------------------------------------------------ Équipe
 
+function postLabel(w: Worker): string {
+  if (w.kind === 'crank') return `manivelle, chaîne ${w.line + 1}`;
+  if (w.kind === 'poly') return w.name === 'Marcel' ? 'polyvalent, le doyen' : 'polyvalent';
+  return `${STATION_NAMES[w.station].toLowerCase()}, chaîne ${w.line + 1}`;
+}
+
+/** Rapport du contremaître : postes qui freinent leur chaîne, avec la cause. */
+function foremanReport(s: GameState, fi: number, est: FactoryEstimate): string[] {
+  const f = s.factories[fi];
+  const out: string[] = [];
+  f.lines.forEach((line, l) => {
+    const b = est.lineBottleneck[l];
+    if (b < 0) return;
+    const m = line.slots[b];
+    if (!m) return;
+    const where = `chaîne ${l + 1}, ${STATION_NAMES[b].toLowerCase()}`;
+    if (m.tier < ROBOT_TIER) {
+      const w = m.post >= 0 ? s.workers.find((x) => x.id === m.post) : undefined;
+      if (!w) out.push(`${where} : poste vacant, tenu au mieux par les polyvalents.`);
+      else if (w.level < TIER_OPERATOR_LEVEL[m.tier]) out.push(`${where} : ${esc(w.name)} n’a pas le niveau, la machine attend sa promotion.`);
+      else if (w.state === 'train') out.push(`${where} : ${esc(w.name)} est en stage.`);
+      else if (canPromote(w)) out.push(`${where} : goulot à ${fmtP(est.rate[l][b])}/s — ${esc(w.name)} peut être promu·e ; sinon outiller ou moderniser.`);
+      else if (canTrain(w)) out.push(`${where} : goulot à ${fmtP(est.rate[l][b])}/s — former ${esc(w.name)} (${w.trainings}/${TRAINING.perLevel}), outiller ou moderniser.`);
+      else out.push(`${where} : goulot à ${fmtP(est.rate[l][b])}/s — outiller ou moderniser.`);
+    } else out.push(`${where} : goulot robotisé à ${fmtP(est.rate[l][b])}/s.`);
+    const human = line.slots.some((x) => x && x.tier < ROBOT_TIER);
+    if (human && !line.conveyor && line.slots.filter(Boolean).length >= 3) out.push(`chaîne ${l + 1} : sans convoyeur, chaque pièce est portée à la main.`);
+    else if (human && line.conveyor && line.crank < 0) out.push(`chaîne ${l + 1} : le convoyeur attend un ouvrier à la manivelle.`);
+  });
+  return out;
+}
+
 function vEquipe(s: GameState): View {
   const k: Record<string, string> = {};
   const d: Record<string, boolean> = {};
   const w: Record<string, number> = {};
-  if (G.chain >= s.chains.length) G.chain = 0;
-  const ci = G.chain;
-  const ws = s.workers.filter((x) => x.chain === ci);
-  const c = s.chains[ci];
+  if (G.factory >= s.factories.length) G.factory = 0;
+  const fi = G.factory;
+  const ws = s.workers.filter((x) => x.factory === fi);
   const rec = recommendation(s);
-  let sig = `E${ci}|${s.chains.length}|${s.act}|${Object.values(s.roles).map(Number).join('')}|${s.canteen}|${ws.length}|${ws.map((x) => x.level + (x.state === 'train' ? 't' : '')).join('')}|${rec.chain === ci && rec.key === 'hire'}`;
-  let h = chainSel(s);
-  const counts = [0, 0, 0, 0, 0];
-  let training = 0;
-  for (const x of ws) {
-    counts[x.level]++;
-    if (x.state === 'train') training++;
-  }
-  const sal = ws.reduce((a, x) => a + WORKER_SALARY[x.level], 0);
-  h += `<div class="card col"><div class="row"><div class="ic" aria-hidden="true">👷</div><div class="info"><div class="nm">Ouvriers <span class="tag" data-k="n"></span></div><div class="ef" data-k="lv"></div>`;
-  h += '<div class="vis">Les ouvriers se répartissent seuls entre les postes. Rester sur le même poste fait gagner jusqu’à 20 % de vitesse.</div></div></div>';
-  k.n = `×${ws.length}`;
-  k.lv = `${[1, 2, 3, 4].filter((l) => counts[l]).map((l) => `${counts[l]} ${counts[l] > 1 ? LEVEL_PLURAL[l] : LEVEL_NAMES[l].toLowerCase()}`).join(' · ') || 'personne'}${training ? ` · ${training} en formation` : ''} · ${fmtP(sal)} €/s`;
+  const recOn = (key: string) => rec.factory === fi && rec.key === key;
+  const free = A.freePosts(s, fi);
+  const polys = A.polyCount(s, fi);
+  let sig = `E${fi}|${s.factories.length}|${s.act}|${Object.values(s.roles).map(Number).join('')}|${s.canteen}|${ws.map((x) => `${x.id}${x.level}${x.trainings}${x.state === 'train' ? 't' : ''}`).join(',')}|${free.length ? `${free[0].kind}${free[0].line}${free[0].station}` : '-'}|${rec.factory}${rec.key}|${s.methods.active}${s.methods.budget}${s.methods.targets.join('')}`;
+  let h = factorySel(s);
+  // Synthèse
+  const sal = ws.reduce((a, x) => a + salaryOf(x), 0);
+  const roleSal = roleSalaries(s);
+  const rev = revenueRate();
+  h += `<div class="card col"><div class="row"><div class="ic" aria-hidden="true">👷</div><div class="info"><div class="nm">Personnel <span class="tag" data-k="n"></span></div><div class="ef" data-k="sal"></div>`;
+  h += '<div class="vis">Un ouvrier embauché prend le poste libre le plus utile et n’en change plus. Les polyvalents, moins chers et moins productifs, tiennent les postes vacants et relèvent les fatigués.</div></div></div>';
   h += '<div class="btns">';
-  h += `<button class="buy${rec.chain === ci && rec.key === 'hire' ? ' rec' : ''}" type="button" data-act="hire" data-b="hire" data-fk="hire"><span class="c">Embaucher</span><small>manœuvre · ${fmtP(WORKER_SALARY[1])} €/s</small></button>`;
-  d.hire = ws.length >= MAX_WORKERS_PER_CHAIN;
-  for (const lvl of [2, 3, 4]) {
-    if ((lvl === 3 && s.act < 2) || (lvl === 4 && s.act < 3)) continue;
-    const cost = A.trainCost(s, lvl);
-    h += `<button class="buy" type="button" data-act="train" data-i="${lvl}" data-b="tr${lvl}" data-fk="tr${lvl}"><span class="c">${euros(cost)}</span><small>Former : ${LEVEL_NAMES[lvl].toLowerCase()}</small></button>`;
-    d[`tr${lvl}`] = s.money < cost || !ws.some((x) => x.level === lvl - 1 && x.state !== 'train');
+  const nf = free[0];
+  h += `<button class="buy${recOn('hire') ? ' rec' : ''}" type="button" data-act="hire" data-b="hire" data-fk="hire"><span class="c">Embaucher</span><small data-k="hp"></small></button>`;
+  d.hire = !nf;
+  k.hp = nf ? (nf.kind === 'crank' ? `manivelle, chaîne ${nf.line + 1}` : `${STATION_NAMES[nf.station].toLowerCase()}, chaîne ${nf.line + 1}`) : 'aucun poste libre';
+  h += `<button class="buy plain${recOn('poly') ? ' rec' : ''}" type="button" data-act="hire-poly" data-b="poly" data-fk="poly"><span class="c">Polyvalent</span><small>${polys}/${POLY.maxPerFactory} · ${pct(POLY.productivity)} de cadence</small></button></div></div>`;
+  d.poly = polys >= POLY.maxPerFactory;
+  k.n = `×${ws.length}`;
+  k.sal = `salaires ${fmtP(sal)} €/s${roleSal ? ` · encadrement ${fmtP(roleSal)} €/s` : ''} · recettes ${fmtP(rev)} €/s`;
+  // Alerte salaires / recettes
+  const totalSal = s.workers.reduce((a, x) => a + salaryOf(x), 0) + roleSal;
+  if (s.act >= 1 && rev > 0 && roleSal > rev * ROLE_WARN_SHARE) {
+    h += `<div class="note">⚠ L’encadrement coûte ${fmtP(roleSal)} €/s, soit ${pct(roleSal / rev)} de vos recettes. Congédiez un rôle si la caisse fond (plus bas).</div>`;
+  } else if (s.act >= 1 && totalSal > rev && s.money < 0) {
+    h += `<div class="note">⚠ Les salaires (${fmtP(totalSal)} €/s) dépassent les recettes (${fmtP(rev)} €/s) : la caisse se vide.</div>`;
   }
-  h += `<button class="buy alt" type="button" data-act="fire" data-b="fire" data-fk="fire"><span class="c">Licencier</span><small>le dernier arrivé</small></button></div></div>`;
-  d.fire = !ws.some((x) => x.name !== 'Marcel');
-  // Besoins de qualification
-  const needs: string[] = [];
-  for (const lvl of [2, 3]) {
-    const need = c.stations.reduce((a, st) => a + (st.tier < ROBOT_TIER && TIER_OPERATOR_LEVEL[st.tier] >= lvl ? st.units.length : 0), 0);
-    const have = ws.filter((x) => (x.state === 'train' ? x.trainTo : x.level) >= lvl).length;
-    if (need > have) needs.push(`${need - have} ${need - have > 1 ? LEVEL_PLURAL[lvl] : LEVEL_NAMES[lvl].toLowerCase()} de plus`);
-  }
-  if (c.stations.some((st) => st.tier === ROBOT_TIER) && !ws.some((x) => (x.state === 'train' ? x.trainTo : x.level) >= 4)) needs.push('un technicien (robots à 50 % sans lui)');
-  const humanUnits = c.stations.reduce((a, st) => a + (st.tier < ROBOT_TIER ? st.units.length : 0), 0);
-  if (needs.length) h += `<div class="note">Les machines de cette chaîne réclament : ${needs.join(', ')}.</div>`;
-  if (s.act >= 3 && humanUnits + 1 < ws.length && c.stations.some((st) => st.tier >= ROBOT_TIER)) {
-    h += `<div class="note">${ws.length - humanUnits - 1} ouvrier(s) sans poste depuis la robotisation. Reconvertissez-les en techniciens (« Former ») ou séparez-vous d’eux (« Licencier »).</div>`;
-  }
-  // Détail par ouvrier (RH)
-  if (s.roles.hr) {
-    h += `<div class="sec">Dossiers du personnel<span>RH</span></div><div class="card col">`;
-    ws.forEach((x, i) => {
-      h += `<div class="kv"><span>${esc(x.name)} · ${LEVEL_NAMES[x.level].toLowerCase()}</span><b data-k="wk${i}"></b></div><div class="bar" style="height:5px;margin-bottom:4px"><i data-w="wm${i}" style="background:${x.morale < 0.5 ? '#ff5a4a' : '#57d987'}"></i></div>`;
-      const sp = Math.max(...[0, 1, 2, 3].map((si) => specBonus(x, si)));
-      k[`wk${i}`] = x.state === 'train' ? `formation ${Math.ceil(x.timer)} s` : `moral ${pct(x.morale)} · occupé ${pct(x.load)}${sp > 0 ? ` · +${Math.round(sp * 100)} %` : ''}${x.home >= 0 ? ` · ${STATION_NAMES[x.home].toLowerCase()}` : ''}`;
-      w[`wm${i}`] = x.morale;
-    });
+  sig += rev > 0 && roleSal > rev * ROLE_WARN_SHARE ? 'W' : totalSal > rev && s.money < 0 ? 'w' : '';
+  // Machines qui attendent une promotion
+  const unq = A.unqualified(s, fi);
+  if (unq.length) h += `<div class="note">Machines à l’arrêt faute de qualification : ${unq.map((x) => `${esc(x.name)} (${STATION_NAMES[x.station].toLowerCase()}, chaîne ${x.line + 1}) doit devenir ${LEVEL_NAMES[TIER_OPERATOR_LEVEL[s.factories[fi].lines[x.line].slots[x.station]!.tier]].toLowerCase()}`).join(' ; ')}. Formez-les puis promouvez-les, même à découvert.</div>`;
+  // Rapport du contremaître
+  if (s.roles.foreman) {
+    const est = estimate(s, fi);
+    const rep = foremanReport(s, fi, est);
+    sig += `|R${rep.length}`;
+    h += `<div class="sec">Rapport du contremaître<span data-k="fx"></span></div><div class="card col">`;
+    if (!rep.length) h += '<div class="kv"><span>Rien à signaler.</span></div>';
+    rep.forEach((_, i) => (h += `<div class="kv"><span data-k="fr${i}"></span></div>`));
     h += '</div>';
-  } else if (s.act >= 2) h += `<div class="note">Recrutez les ressources humaines pour voir le moral et les compétences de chacun.</div>`;
+    rep.forEach((x, i) => (k[`fr${i}`] = x));
+    k.fx = `${fmtP(est.x)} pièce/s`;
+  }
+  // Ouvriers
+  h += `<div class="sec">Ouvriers<span>former ×${TRAINING.perLevel}, puis promouvoir</span></div>`;
+  const order = [...ws].sort((a, b) => (a.kind === b.kind ? a.line * 10 + a.station - (b.line * 10 + b.station) : ['post', 'crank', 'poly'].indexOf(a.kind) - ['post', 'crank', 'poly'].indexOf(b.kind)));
+  for (const x of order) {
+    const id = x.id;
+    h += `<div class="card col wk${recOn(`tr${id}`) ? ' rec' : ''}"><div class="row"><div class="info"><div class="nm">${esc(x.name)} <span class="tag">${LEVEL_NAMES[x.level]}</span> <span class="dots" aria-label="${x.trainings} formations sur ${TRAINING.perLevel}">${'●'.repeat(x.trainings)}${'○'.repeat(TRAINING.perLevel - x.trainings)}</span></div><div class="ef" data-k="wk${id}"></div>`;
+    if (s.roles.hr) h += `<div class="bar" style="height:4px;margin-top:3px"><i data-w="wm${id}" style="background:${x.morale < 0.5 ? '#ff5a4a' : '#57d987'}"></i></div>`;
+    h += '</div><div class="btns mini">';
+    if (x.kind !== 'crank') {
+      if (canPromote(x)) {
+        const cost = promotionCost(s, x);
+        h += `<button class="buy" type="button" data-act="promote" data-i="${id}" data-b="pr${id}" data-fk="pr${id}"><span class="c">${euros(cost)}</span><small>Promouvoir</small></button>`;
+        d[`pr${id}`] = (s.money < cost && !A.urgent(s, x)) || x.state === 'train';
+      } else if (x.trainings < TRAINING.perLevel) {
+        const cost = trainingCost(s, x);
+        h += `<button class="buy${recOn(`tr${id}`) ? ' rec' : ''}" type="button" data-act="train" data-i="${id}" data-b="tr${id}" data-fk="tr${id}"><span class="c">${euros(cost)}</span><small>Former</small></button>`;
+        d[`tr${id}`] = (s.money < cost && !A.urgent(s, x)) || !canTrain(x);
+      }
+    }
+    if (x.name !== 'Marcel') h += `<button class="buy plain" type="button" data-act="fire" data-i="${id}" data-fk="fi${id}"><span class="c">Licencier</span><small>poste vacant</small></button>`;
+    h += '</div></div></div>';
+    const status = x.state === 'train' ? `${x.course === 'promote' ? 'promotion' : 'formation'} ${Math.ceil(x.timer)} s` : x.rest > 0 ? 'en pause' : x.state === 'work' ? 'au travail' : x.state === 'carry' ? 'porte une pièce' : x.state === 'walk' ? 'en chemin' : 'attend';
+    const prod = `cadence ×${fmtP(skill(x))}`;
+    k[`wk${id}`] = `${x.kind === 'post' ? '' : `${KIND_NAMES[x.kind]} · `}${postLabel(x)} · ${status} · ${prod} · ${fmtP(salaryOf(x))} €/s${s.roles.hr ? ` · moral ${pct(x.morale)}` : ''}`;
+    w[`wm${id}`] = x.morale;
+  }
+  // Ingénieur méthodes : consigne
+  if (s.roles.methods) {
+    h += `<div class="sec">Consigne de modernisation<span>ingénieur méthodes</span></div><div class="card col">`;
+    for (let st = 0; st < 4; st++) {
+      h += `<div class="kv"><span>${STATION_NAMES[st]}</span></div><div class="seg" role="group" aria-label="Palier visé : ${STATION_NAMES[st].toLowerCase()}">`;
+      for (let t = 0; t < TIER_COUNT; t++) {
+        if (t > 0 && !A.tierAllowed(s, t)) continue;
+        h += `<button type="button" data-act="m-target" data-i="${st}" data-t="${t}" data-fk="mt${st}${t}" class="${s.methods.targets[st] === t ? 'on' : ''}">${TIER_NAMES[t]}</button>`;
+      }
+      h += '</div>';
+    }
+    h += '<div class="kv"><span>Part de la trésorerie engagée</span></div><div class="seg" role="group" aria-label="Budget">';
+    METHODS.budgets.forEach((b, i) => {
+      h += `<button type="button" data-act="m-budget" data-i="${i}" data-fk="mb${i}" class="${s.methods.budget === i ? 'on' : ''}">${pct(b)}</button>`;
+    });
+    h += `</div><div class="btns"><button class="buy${s.methods.active ? ' plain' : ''}" type="button" data-act="m-active" data-i="${s.methods.active ? 0 : 1}" data-fk="ma"><span class="c">${s.methods.active ? 'Suspendre' : 'Appliquer'}</span><small>${s.methods.active ? 'la consigne est appliquée' : 'la consigne'}</small></button></div></div>`;
+  }
   // Cantine
   if (s.act >= 2) {
     sig += `|ca${s.canteen}`;
@@ -244,7 +373,7 @@ function vEquipe(s: GameState): View {
     const id = r.id as RoleId;
     const av = A.roleAvailable(s, id);
     if (s.roles[id]) {
-      h += `<div class="card"><div class="ic" aria-hidden="true">📋</div><div class="info"><div class="nm">${ROLE_NAMES[id]} <span class="tag green">en poste</span></div><div class="vis">${ROLE_DECISION[id]}</div></div></div>`;
+      h += `<div class="card"><div class="ic" aria-hidden="true">📋</div><div class="info"><div class="nm">${ROLE_NAMES[id]} <span class="tag green">en poste</span></div><div class="vis">${ROLE_DECISION[id]} ${fmtP(r.salary)} €/s.</div></div><button class="buy plain" type="button" data-act="dismiss" data-i="${id}" data-fk="dm${id}"><span class="c">Congédier</span><small>−${fmtP(r.salary)} €/s</small></button></div>`;
     } else if (!av) {
       h += `<div class="card dim"><div class="ic" aria-hidden="true">${lock}</div><div class="info"><div class="nm">${ROLE_NAMES[id]}</div><div class="vis">${['', 'Acte I', 'Acte II', 'Acte III'][r.act]} · ${ROLE_DATA[id]}</div></div></div>`;
     } else {
@@ -403,12 +532,13 @@ function vMarche(s: GameState): View {
     });
   }
   // Ventes
-  const mats = [...new Set(s.chains.map((c) => c.material))];
+  const mats = [...new Set(s.factories.map((f) => f.material))];
   sig += mats.join('');
   h += '<div class="sec">Ventes</div><div class="card col">';
   for (const m of mats) h += `<div class="kv"><span>${MATERIAL_NAMES[m]}</span><b>${fmtP(MATERIALS[m].price * priceMult(s))} € · matière ${fmtP(MATERIALS[m].raw)} €</b></div>`;
-  h += `<div class="kv"><span>Stock</span><b data-k="st"></b></div><div class="kv"><span>Demande maximale</span><b>${s.act === 5 ? 'illimitée' : `${fmt(a.market)} €/s`}</b></div></div>`;
+  h += `<div class="kv"><span>Recettes</span><b data-k="rv"></b></div><div class="kv"><span>Stock</span><b data-k="st"></b></div><div class="kv"><span>Demande maximale</span><b>${s.act === 5 ? 'illimitée' : `${fmt(a.market)} €/s`}</b></div></div>`;
   k.st = `${fmt(s.stock.reduce((x, y) => x + y, 0))} écrous`;
+  k.rv = `${fmtP(revenueRate())} €/s`;
   return { sig, html: h, k, d, w };
 }
 
@@ -429,7 +559,7 @@ export function tabLocked(s: GameState, t: Tab): boolean {
 }
 
 export function tabAlerts(s: GameState): Partial<Record<Tab, boolean>> {
-  const broken = s.chains.some((c) => c.stations.some((st) => st.units.some((u) => u.broken && u.service <= 0)));
+  const broken = s.factories.some((f) => f.lines.some((l) => l.slots.some((m) => m && m.broken && m.service <= 0)));
   const research =
     s.act >= 1 &&
     ((A.researchAvailable(s, 'tier') && s.money >= A.researchCost(s, 'tier')) ||
@@ -438,7 +568,7 @@ export function tabAlerts(s: GameState): Partial<Record<Tab, boolean>> {
     atelier: broken,
     rd: research || (s.knowHow.points > 0 && KNOW_HOW.some((d) => s.knowHow.levels[d.id] < d.max && knowHowCost(d.id, s.knowHow.levels[d.id]) <= s.knowHow.points)),
     marche: (s.act === 0 && s.money >= s.debt) || A.canMove(s) || A.canBuyout(s) || s.spot.some((c) => !c.accepted),
-    equipe: s.chains.some((c, ci) => c.stations.some((st) => st.tier >= 1 && st.tier < ROBOT_TIER) && !s.workers.some((x) => x.chain === ci && x.level >= 2)),
+    equipe: s.factories.some((_, fi) => A.unqualified(s, fi).some((w) => w.state !== 'train')),
   };
 }
 
@@ -452,8 +582,8 @@ export function onPanelAction(act: string, ds: DOMStringMap): void {
   const i = ds.i ?? '';
   const n = +i;
   switch (act) {
-    case 'chain-sel':
-      G.chain = n;
+    case 'factory-sel':
+      G.factory = n;
       break;
     case 'mat':
       U.setMaterial(n);
@@ -462,19 +592,22 @@ export function onPanelAction(act: string, ds: DOMStringMap): void {
       U.addUnit(n);
       break;
     case 'tool':
-      U.upgradeTool(n);
+      U.upgradeTool(+(ds.t ?? 0), n);
+      break;
+    case 'conveyor':
+      U.buyConveyor(n);
       break;
     case 'modern':
       U.modernize(n);
       break;
     case 'repair':
-      U.repair(n, +(ds.u ?? 0));
+      U.repair(+(ds.l ?? 0), n);
       break;
     case 'service':
-      U.service(n, +(ds.u ?? 0));
+      U.service(+(ds.l ?? 0), n);
       break;
-    case 'buy-chain':
-      U.buyChain();
+    case 'buy-factory':
+      U.buyFactory();
       break;
     case 'energy':
       U.buyEnergy(i as A.EnergyKind);
@@ -482,14 +615,32 @@ export function onPanelAction(act: string, ds: DOMStringMap): void {
     case 'hire':
       U.hire();
       break;
+    case 'hire-poly':
+      U.hirePoly();
+      break;
     case 'fire':
-      U.fire();
+      U.fire(n);
       break;
     case 'train':
       U.train(n);
       break;
+    case 'promote':
+      U.promote(n);
+      break;
     case 'role':
       U.hireRole(i as RoleId);
+      break;
+    case 'dismiss':
+      U.dismissRole(i as RoleId);
+      break;
+    case 'm-target':
+      U.setMethodsTarget(n, +(ds.t ?? 0));
+      break;
+    case 'm-budget':
+      U.setMethodsBudget(n);
+      break;
+    case 'm-active':
+      U.setMethodsActive(n === 1);
       break;
     case 'canteen':
       U.buyCanteen();

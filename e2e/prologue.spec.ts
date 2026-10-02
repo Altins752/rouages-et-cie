@@ -35,14 +35,14 @@ test('info-bulle au survol d’un poste et d’un ouvrier', async ({ page }) => 
     r.skip(30);
   });
   const box = (await page.locator('#stage').boundingBox())!;
-  // poste de frappe : deuxième colonne de l'atelier
+  // poste de frappe de la chaîne 1 : deuxième colonne, première rangée
   const pos = await page.evaluate(() => {
     const r = (window as any).__rouages;
     const cam = r.cam;
     const cv = document.getElementById('cv') as HTMLCanvasElement;
     const dpr = cv.width / cv.getBoundingClientRect().width;
-    const sx = (158 - cam.x) * cam.zoom + cv.width / 2;
-    const sy = (108 + 10 - cam.y) * cam.zoom + cv.height / 2;
+    const sx = (178 - cam.x) * cam.zoom + cv.width / 2;
+    const sy = (118 + 6 - cam.y) * cam.zoom + cv.height / 2;
     return { x: sx / dpr, y: sy / dpr };
   });
   await page.mouse.move(box.x + pos.x, box.y + pos.y);

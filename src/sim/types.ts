@@ -1,6 +1,8 @@
 import type { KnowHowId, RoleId } from '../data/balance';
 
-export interface Unit {
+/** Un poste d'une chaîne : établi ou machine. */
+export interface Machine {
+  tier: number;
   wear: number;
   broken: boolean;
   /** Temps restant d'intervention (réparation ou révision), 0 si aucune. */
@@ -9,42 +11,56 @@ export interface Unit {
   /** En cours d'usinage. */
   busy: boolean;
   prog: number;
-  /** Ouvrier qui a réservé ou occupe l'unité (-1 si aucun). */
-  worker: number;
+  /** Ouvrier attitré au poste (-1 : poste vacant). */
+  post: number;
+  /** Ouvrier qui usine en ce moment, attitré ou polyvalent (-1 : personne). */
+  user: number;
   /** Temps occupé pendant le dernier pas (énergie, usure). */
   busyT: number;
+  /** Pièces sorties par seconde (moyenne glissante, rapport du contremaître). */
+  rate: number;
 }
 
-export interface Station {
-  tier: number;
-  tool: number;
-  units: Unit[];
-}
-
-export interface Chain {
-  id: number;
-  material: number;
-  stations: Station[];
+/** Une chaîne : une rangée de 4 postes, ses piles, son convoyeur. */
+export interface Line {
+  /** slots[s] : le poste s de la chaîne, ou null s'il n'est pas encore acheté. */
+  slots: (Machine | null)[];
   /** buf[s] = pièces en attente devant le poste s (buf[0] inutilisé : barres illimitées). */
   buf: number[];
+  conveyor: boolean;
+  /** Ouvrier à la manivelle du convoyeur (-1 : aucun). */
+  crank: number;
+  produced: number;
+}
+
+/** Une usine (un hall) : jusqu'à 4 chaînes, un matériau. */
+export interface Factory {
+  id: number;
+  material: number;
+  lines: Line[];
   /** Temps restant de rodage après un changement de matériau. */
   matChange: number;
   produced: number;
   scrapped: number;
-  /** Mesure du gaspillage (s·unité en veille) depuis le dernier échantillon. */
-  idleUnitT: number;
-  busyUnitT: number;
 }
 
-export type WorkerState = 'idle' | 'walk' | 'work' | 'train';
+/** post : attitré à un poste ; poly : polyvalent ; crank : à la manivelle d'un convoyeur. */
+export type WorkerKind = 'post' | 'poly' | 'crank';
+export type WorkerState = 'idle' | 'walk' | 'work' | 'carry' | 'train';
 
 export interface Worker {
   id: number;
   name: string;
+  kind: WorkerKind;
   level: number;
-  chain: number;
-  /** Secondes passées sur chaque poste (spécialisation). */
-  spec: number[];
+  /** Formations suivies au niveau actuel (0 à 5). */
+  trainings: number;
+  /** Formations suivies depuis l'embauche (productivité). */
+  trained: number;
+  factory: number;
+  /** Poste attitré (ouvrier fixe) ou chaîne du convoyeur (manivelle) ; -1 sinon. */
+  line: number;
+  station: number;
   morale: number;
   /** Occupation, moyenne glissante 0–1. */
   load: number;
@@ -54,16 +70,26 @@ export interface Worker {
   from: number;
   walkTotal: number;
   timer: number;
+  /** Machine visée ou occupée : chaîne et poste (-1). */
+  tl: number;
   ts: number;
-  tu: number;
-  trainTo: number;
+  /** Pièce portée sans convoyeur : chaîne et poste de destination (-1). */
+  carryLine: number;
+  carryTo: number;
+  /** Stage en cours. */
+  course: 'none' | 'train' | 'promote';
   last: number;
-  /** Poste attitré par le contremaître (-1 si aucun). */
-  home: number;
-  /** Ouvrier sans poste depuis la robotisation. */
-  displaced: boolean;
   /** Pause en cours (relève), en secondes. */
   rest: number;
+}
+
+/** Consigne de l'ingénieur méthodes. */
+export interface Methods {
+  /** Palier visé par type de poste. */
+  targets: number[];
+  /** Indice dans METHODS.budgets (part de la caisse engageable). */
+  budget: number;
+  active: boolean;
 }
 
 export interface SpotContract {
@@ -157,6 +183,8 @@ export interface Stats {
   actEnd: number[];
   peakRevenueRate: number;
   knowHowEarned: number;
+  trainings: number;
+  promotions: number;
 }
 
 export interface Research {
@@ -179,8 +207,11 @@ export interface GameState {
   money: number;
   debt: number;
   due: number;
-  chains: Chain[];
+  factories: Factory[];
   workers: Worker[];
+  /** Outillage global : tooling[palier][poste], 0 à TOOL_MAX. Conservé aux déménagements. */
+  tooling: number[][];
+  methods: Methods;
   nextId: number;
   nameIdx: number;
   stock: number[];
@@ -220,13 +251,14 @@ export interface Flow {
 }
 
 export type SimEvent =
-  | { type: 'piece'; chain: number; station: number; unit: number }
-  | { type: 'scrap'; chain: number }
+  | { type: 'piece'; factory: number; line: number; station: number }
+  | { type: 'scrap'; factory: number }
   | { type: 'sale'; value: number; n: number }
-  | { type: 'breakdown'; chain: number; station: number; unit: number }
-  | { type: 'repaired'; chain: number; station: number; unit: number }
-  | { type: 'trained'; worker: number; level: number }
-  | { type: 'hrTrain'; worker: number; level: number }
+  | { type: 'breakdown'; factory: number; line: number; station: number }
+  | { type: 'repaired'; factory: number; line: number; station: number }
+  | { type: 'trained'; worker: number; level: number; promoted: boolean }
+  | { type: 'hrTrain'; worker: number; promote: boolean }
+  | { type: 'methods'; factory: number; line: number; station: number; tier: number }
   | { type: 'deadline'; debt: number }
   | { type: 'goal' }
   | { type: 'ferrum'; event: 'poach' | 'war' | 'exclusive'; name?: string }
@@ -236,5 +268,5 @@ export type SimEvent =
   | { type: 'longBroken'; id: number }
   | { type: 'gridCut' }
   | { type: 'gridBack' }
-  | { type: 'preventive'; chain: number; station: number; unit: number }
+  | { type: 'preventive'; factory: number; line: number; station: number }
   | { type: 'milestone'; id: string };

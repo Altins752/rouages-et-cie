@@ -4,7 +4,7 @@ import type { Page } from '@playwright/test';
 const shot = (page: Page, name: string) =>
   page.screenshot({ path: `e2e/screens/${test.info().project.name}-${name}.jpg`, type: 'jpeg', quality: 80 });
 
-async function playTo(page: Page, act: number, extra: number): Promise<{ act: number; chains: number }> {
+async function playTo(page: Page, act: number, extra: number): Promise<{ act: number; factories: number }> {
   await page.goto('/');
   await page.evaluate(() => localStorage.clear());
   await page.reload();
@@ -16,37 +16,61 @@ async function playTo(page: Page, act: number, extra: number): Promise<{ act: nu
 test.describe('actes joués par l’IA du simulateur', () => {
   test.setTimeout(180_000);
 
-  test('acte I : machines, contremaître, deux chaînes', async ({ page }) => {
+  test('acte I : machines, contremaître, deux usines', async ({ page }) => {
     const r = await playTo(page, 1, 1500);
     expect(r.act).toBe(1);
-    expect(r.chains).toBe(2);
+    expect(r.factories).toBe(2);
     await expect(page.locator('#objL')).toContainText('50');
-    // le contremaître signale le goulot
-    await expect(page.locator('.tag.red').first()).toHaveText('goulot');
+    await expect(page.locator('#rate')).toContainText('€/s');
     await shot(page, 'acte1');
-    // double-clic sur le second hall : il devient la chaîne affichée
     await page.locator('#tabs button[data-t="atelier"]').click();
-    await page.getByRole('button', { name: 'Chaîne 2' }).click();
-    await expect(page.getByRole('button', { name: 'Chaîne 2' })).toHaveClass(/on/);
+    await expect(page.getByText(/goulot :/).first()).toBeVisible();
+    await page.getByRole('button', { name: 'Usine 2' }).click();
+    await expect(page.getByRole('button', { name: 'Usine 2' })).toHaveClass(/on/);
     await page.keyboard.press('2');
-    await expect(page.getByText('Encadrement')).toBeVisible();
+    await expect(page.locator('.sec', { hasText: 'Encadrement' })).toBeVisible();
+    await expect(page.locator('.sec', { hasText: 'Rapport du contremaître' })).toBeVisible();
     await shot(page, 'acte1-equipe');
+  });
+
+  test('acte I : former, promouvoir et licencier un ouvrier précis', async ({ page }) => {
+    await playTo(page, 1, 600);
+    const id = await page.evaluate(() => {
+      const r = (window as any).__rouages;
+      r.G.factory = 0;
+      r.G.s.money = 1e6;
+      return r.G.s.workers.find((w: any) => w.kind === 'post' && w.state !== 'train' && w.trainings < 5).id;
+    });
+    await page.keyboard.press('2');
+    await page.locator(`[data-act="train"][data-i="${id}"]`).click();
+    expect(await page.evaluate((i) => (window as any).__rouages.G.s.workers.find((w: any) => w.id === i).state, id)).toBe('train');
+    await page.evaluate((i) => {
+      const w = (window as any).__rouages.G.s.workers.find((x: any) => x.id === i);
+      w.state = 'idle';
+      w.trainings = 5;
+    }, id);
+    await page.locator(`[data-act="promote"][data-i="${id}"]`).click();
+    expect(await page.evaluate((i) => (window as any).__rouages.G.s.workers.find((w: any) => w.id === i).course, id)).toBe('promote');
+    await page.locator(`[data-act="fire"][data-i="${id}"]`).click();
+    expect(await page.evaluate((i) => (window as any).__rouages.G.s.workers.some((w: any) => w.id === i), id)).toBe(false);
+    await expect(page.getByRole('button', { name: /Embaucher/ })).toBeEnabled();
   });
 
   test('acte I : une panne se voit et se répare, même sans argent', async ({ page }) => {
     await playTo(page, 1, 1500);
     await page.evaluate(() => {
       const r = (window as any).__rouages;
-      r.G.s.chains[0].stations[1].units[0].broken = true;
+      r.G.factory = 0;
+      r.G.s.factories[0].lines[0].slots[1].broken = true;
       r.G.s.money = -50;
+      r.G.paused = true;
     });
     await expect(page.locator('.lamp[data-lamp="panne"]')).toHaveClass(/on/);
     await page.keyboard.press('1');
-    await page.getByRole('button', { name: 'Chaîne 1' }).click();
-    const repair = page.getByRole('button', { name: /Réparer n°1/ });
+    const repair = page.getByRole('button', { name: /Réparer frappe/ }).first();
     await expect(repair).toBeEnabled();
     await repair.click();
-    const u = await page.evaluate(() => (window as any).__rouages.G.s.chains[0].stations[1].units[0]);
+    const u = await page.evaluate(() => (window as any).__rouages.G.s.factories[0].lines[0].slots[1]);
     expect(u.service).toBeGreaterThan(0);
     expect(await page.evaluate(() => (window as any).__rouages.G.s.money)).toBeLessThan(-50);
     await shot(page, 'acte1-panne');
@@ -55,7 +79,7 @@ test.describe('actes joués par l’IA du simulateur', () => {
   test('acte II : site régional, énergie visible, contrats, moral', async ({ page }) => {
     const r = await playTo(page, 2, 1500);
     expect(r.act).toBe(2);
-    expect(r.chains).toBeGreaterThanOrEqual(2);
+    expect(r.factories).toBeGreaterThanOrEqual(2);
     await page.evaluate(() => {
       const g = (window as any).__rouages;
       g.G.s.money += 30000;
@@ -86,7 +110,7 @@ test.describe('actes joués par l’IA du simulateur', () => {
     expect(r.act).toBe(3);
     const info = await page.evaluate(() => {
       const s = (window as any).__rouages.G.s;
-      return { roles: Object.values(s.roles).filter(Boolean).length, robots: s.chains.some((c: any) => c.stations.some((st: any) => st.tier >= 3)) };
+      return { roles: Object.values(s.roles).filter(Boolean).length, robots: s.factories.some((f: any) => f.lines.some((l: any) => l.slots.some((m: any) => m && m.tier >= 3))) };
     });
     expect(info.roles).toBeGreaterThanOrEqual(4);
     await page.waitForTimeout(400);
@@ -123,16 +147,17 @@ test.describe('actes joués par l’IA du simulateur', () => {
       s.research.tier = 4;
       s.research.materials = [true, true, true, true, true, true, true];
       s.money = 1e10;
-      r.A.buyChain(s);
+      r.A.buyFactory(s);
       for (let si = 0; si < 4; si++) {
-        while (s.chains[0].stations[si].tier < 3) r.A.modernize(s, 0, si);
-        while (s.chains[1].stations[si].tier < 4) r.A.modernize(s, 1, si);
         for (let k = 0; k < 3; k++) { r.A.addUnit(s, 0, si); r.A.addUnit(s, 1, si); }
+        while (r.A.modernizeTarget(s, 0, si)?.tier < 3) r.A.modernize(s, 0, si);
+        while (r.A.modernizeTarget(s, 1, si)) r.A.modernize(s, 1, si);
       }
       r.A.setMaterial(s, 0, 5);
       r.A.setMaterial(s, 1, 6);
-      r.A.hire(s, 0);
+      r.A.hirePoly(s, 0);
       s.workers[1].level = 4;
+      for (const f of s.factories) for (let l = 0; l < 4; l++) r.A.buyConveyor(s, s.factories.indexOf(f), l);
       r.skip(40);
     });
     await page.keyboard.press('Escape');

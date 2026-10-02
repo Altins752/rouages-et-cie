@@ -83,19 +83,40 @@ Ce fichier sert à reprendre une session interrompue : l'étape en cours est mar
 - [x] `dist/rouages.html` autonome (182 Ko), README, captures dans `docs/captures/`, rapport final
 - [x] Sim finale, 61 tests unitaires, 36 tests e2e, commit
 
+## Refonte v2 (demandée le 2026-10-03) — FAIT
+
+Nouvelle partie obligatoire (sauvegarde v3, les anciennes sont refusées). Vocabulaire : une **usine** (hall) contient jusqu'à 4 **chaînes** (rangées), chacune avec ses 4 **postes** (découpe, frappe, taraudage, contrôle).
+
+- [x] R1 — Moteur : usines et chaînes, pièces rattachées à leur chaîne (débord vers une chaîne qui a le poste suivant), postes fixes (affectés à l'embauche, ne bougent plus), polyvalents (moins chers, moins productifs, relève), convoyeur manuel par chaîne avec un ouvrier à la manivelle (sinon portage des pièces), formation (+4 %/formation) et promotion après 5 formations (on n'embauche que des manœuvres), outillage global par poste et par palier sur 50 niveaux, modernisation machine par machine, ingénieur méthodes (consigne), congédier un rôle ; tests
+- [x] R2 — Analyse, conseiller et IA du simulateur ; nouveaux critères ; rééquilibrage 5–6 h (5 h 13 à 5 h 18 sur 3 graines)
+  - Garde-fous ajoutés : formation d'urgence à découvert (machine à l'arrêt faute de qualification), l'IA et l'ingénieur méthodes préparent l'ouvrier avant de moderniser, les RH anticipent la consigne, tout ouvrier de l'usine peut devenir technicien
+  - Équilibrage : outillage (coût 0,8 × 1,09^n, τ = 18), convoyeur au prix de sa chaîne (60 %), halls ×1,5, marchés 220 / 3 000 / 32 000 €/s, recherches semi-auto 150 k€, robots 3 M€, usine noire 500 M€, inox 100 k€, titane 2,5 M€, diamant 1,5 Md€, rachat 2 Md€
+- [x] R2 bis — Tests unitaires réécrits (72) : postes fixes, débord entre chaînes, convoyeur et manivelle, outillage global, formation et promotion, formation d'urgence, ingénieur méthodes, congédier un rôle, sauvegarde v3
+- [x] R3 — Rendu : une usine = un hall à 4 rangées (chaînes numérotées), piles par chaîne, convoyeur à manivelle animé, portage visible, ouvriers fixes, silhouettes en pointillés aux postes vacants, jauge d'outillage, voyant « attend une promotion », cadences du contremaître au-dessus de chaque poste
+- [x] R4 — Interface : Atelier (chaînes, postes un par un, modernisation machine par machine, outillage par palier, convoyeurs, usines), Équipe (embaucher au poste libre, polyvalents, chaque ouvrier : former / promouvoir / licencier, rapport du contremaître, consigne de l'ingénieur méthodes, congédier un rôle, alerte salaires / recettes), recettes €/s sur le pupitre, info-bulles par chaîne et par poste
+- [x] R5 — Cadrage (§ 19), CLAUDE.md (invariants 2 et 4), décisions, e2e (38), captures, README, fichier unique
+
 ## Durées simulées
 
 Minutes réelles par étape. Critères : actif entre 5 et 6 h, prologue actif entre 5 et 10 min, premier achat < 60 s, jamais plus de 3 min sans achat possible, aucun acte bloqué.
 
-### Final (graine 11)
+### Refonte v2 (graine 11)
+
+| Profil | Prologue | Acte I | Acte II | Acte III | Acte IV | Total | 1er achat | Attente max |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Calme (sans clic) | 10,3 | 70,0 | 87,0 | 110,0 | 345,0 | 10 h 22 | 30 s | 120 s |
+| Actif (zone verte) | 6,5 | 39,2 | 46,5 | 55,2 | 168,7 | 5 h 16 | 16 s | 24 s |
+| Gros cliqueur (zone rouge) | 3,9 | 25,1 | 24,0 | 27,3 | 80,3 | 2 h 41 | 12 s | 18 s |
+
+« Attente max » : plus longue période sans aucun achat abordable qui augmente les recettes. Achats possibles par tranche de 10 min (actif) : 25 au prologue, 64 à l'acte I, 98 à l'acte II, 213 à l'acte III, 18 à l'acte IV. L'attente sans achat rentabilisé en moins de 5 min reste longue à l'acte IV (≈ 90 min en jeu actif) : épargne pour l'usine noire, le diamant et le rachat. Autres graines (actif) : 5 h 13 à 5 h 18. Aucun acte bloqué, fin chaleureuse.
+
+### Version PC v1 (graine 11, avant la refonte)
 
 | Profil | Prologue | Acte I | Acte II | Acte III | Acte IV | Total | 1er achat | Attente max |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Calme (sans clic) | 11,3 | 40,0 | 61,3 | 123,8 | 417,3 | 10 h 53 | 45 s | 105 s |
 | Actif (zone verte) | 6,9 | 22,5 | 32,4 | 60,8 | 202,9 | 5 h 26 | 16 s | 48 s |
 | Gros cliqueur (zone rouge) | 4,3 | 12,8 | 17,1 | 30,9 | 94,3 | 2 h 39 | 12 s | 24 s |
-
-Autres graines : actif 5 h 24 (23), 5 h 23 (51), 5 h 27 (77) ; calme 10 h 55 (23), 10 h 54 (51) ; zone rouge 2 h 40 (23 et 51). Aucun acte bloqué, fin chaleureuse dans tous les cas (l'IA ne licencie jamais), 13 à 14 points de savoir-faire gagnés sur la campagne.
 
 ### Historique
 
@@ -118,8 +139,9 @@ Aux étapes 1 et 4, l'actif variait de 5 h 15 à 6 h 52 selon la graine : un act
 - **Moteur de simulation** (`src/sim`) porté du POC, déterministe et indépendant de la taille du pas : ouvriers qui marchent et s'affectent seuls, piles plafonnées devant le goulot, quatre leviers, cinq paliers technologiques, sept matériaux, usure et pannes, maintenance (externe, atelier, préventive, prédictive), moral avec relève, spécialisation, cantine, énergie (réseau, solaire, éolien, batterie, revente, coupure), contrats ponctuels et long terme, réputation, Ferrum (débauchage, guerre des prix, contrat exclusif) avec un directeur de crises, six rôles d'encadrement qui débloquent l'information et décident, déménagements, savoir-faire.
 - **Information qui se débloque** : sans rôle, seuls la caisse et le stock ; l'onglet Données se remplit rôle par rôle (tableaux, graphiques avec lecture au survol).
 - **Chaque achat se voit** : établis, machines (cinq dessins), outillage (encoches), halls, éoliennes, panneaux, batteries, cantine, encadrement ; la caméra recule quand l'usine grandit.
-- **Sauvegarde** locale versionnée (v2, migration v1 → v2), progression hors ligne jusqu'à 8 h avec rapport d'absence ; thèmes clair et sombre (système ou forcés) ; `prefers-reduced-motion` respecté ; tout le panneau au clavier.
-- **Outillage** : `npm run sim` (campagne réelle, 3 profils, critères vérifiés), 61 tests unitaires, 36 tests e2e (deux thèmes, deux tailles d'écran, actes joués par l'IA, fin, hors ligne, fichier unique), `dist/rouages.html` autonome.
+- **Sauvegarde** locale versionnée (v3 depuis la refonte ; les parties v1 et v2 ne sont pas reprises), progression hors ligne jusqu'à 8 h avec rapport d'absence ; thèmes clair et sombre (système ou forcés) ; `prefers-reduced-motion` respecté ; tout le panneau au clavier.
+- **Refonte v2** : usines de 4 chaînes, postes achetés un par un, ouvriers à poste fixe, polyvalents, formation et promotion, convoyeurs à manivelle, outillage global sur 50 niveaux, ingénieur méthodes, rapport du contremaître, recettes €/s au pupitre (voir cadrage § 19).
+- **Outillage** : `npm run sim` (campagne réelle, 3 profils, critères vérifiés), 72 tests unitaires, 38 tests e2e (deux thèmes, deux tailles d'écran, actes joués par l'IA, fin, hors ligne, fichier unique), `dist/rouages.html` autonome.
 
 ### Limites connues
 

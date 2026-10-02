@@ -256,3 +256,27 @@ Règles précisées :
 - Contrats, moral et énergie à partir de l'acte II ; deux fins selon reconversions et licenciements ; ambiance chaleureuse.
 
 Durées simulées (jeu actif) : prologue 7 min, acte I 22 min, acte II 32 min, acte III 61 min, acte IV 203 min, total 5 h 25.
+
+## 19. Refonte v2 : usines, chaînes, postes fixes (3 octobre 2026)
+
+Demandée après les premières parties (acte III déficitaire, recettes invisibles, longues attentes sans achat). Elle remplace les sections 4, 5, 7 et 18 là où elles divergent ; `src/data/balance.ts` fait foi, le détail est dans `docs/decisions.md`.
+
+**Structure.** Une usine (un hall) contient 4 chaînes ; une chaîne est une rangée de 4 postes (découpe, frappe, taraudage, contrôle). On achète les postes un par un : chaque nouveau poste va à la première chaîne qui ne l'a pas. Les pièces appartiennent à leur chaîne ; si une chaîne n'a pas le poste suivant, sa sortie part vers la chaîne la moins chargée qui l'a. Le nombre d'usines par site reste plafonné (1 / 2 / 4 / 8 / 16).
+
+**Personnel.** On n'embauche que des manœuvres. Chaque ouvrier est affecté à l'embauche au poste libre le plus utile (avec contremaître : le plus lent) et n'en change plus, ni de poste ni d'usine. Pas de reconversion : on licencie et on embauche. Les polyvalents (70 % du salaire, 75 % de cadence, 6 par usine) tiennent les postes vacants et relèvent les fatigués. Formation : +4 % de productivité chacune ; après 5 formations, promotion au niveau suivant (opérateur, régleur, technicien).
+
+**Technologie.** Modernisation machine par machine ; la machine garde son ouvrier et attend sa promotion s'il n'a pas le niveau (formation d'urgence possible à découvert). Outillage : 50 niveaux par poste et par palier, valables pour toutes les machines identiques de la partie ; gain 1 + 1,6 × (1 − e^(−n/18)), coût prix machine × 0,8 × 1,09^n.
+
+**Flux.** Sans convoyeur, chaque pièce est portée à la main (1 s). Convoyeur à manivelle par chaîne, dès le prologue, actionné par un ouvrier dédié ; prix 60 % de la valeur des machines de la chaîne (40 € minimum). Les robots transfèrent seuls.
+
+**Encadrement.** Contremaître : rapport dynamique de productivité par poste. Nouvel ingénieur méthodes (acte II) : modernise selon une consigne (palier visé par poste, part de trésorerie). Tous les rôles se congédient. Recettes en €/s toujours affichées ; alerte quand l'encadrement dépasse 25 % des recettes.
+
+| Paramètre | Version PC (§ 18) | Refonte v2 |
+| --- | --- | --- |
+| Marchés actes I / II / III | 180 / 1 700 / 27 000 €/s | 220 / 3 000 / 32 000 €/s |
+| Recherche mécanique / semi-auto / robotisé / usine noire | — / 80 k€ / 1,2 M€ / 200 M€ | 300 € / 150 k€ / 3 M€ / 500 M€ |
+| Recherche laiton / inox / titane / diamant | 30 k€ / 60 k€ / 800 k€ / 800 M€ | 30 k€ / 100 k€ / 2,5 M€ / 1,5 Md€ |
+| Rachat de Ferrum | — | 2 Md€ |
+| Outillage | 3 niveaux, +25 % | 50 niveaux, global |
+
+Durées simulées (jeu actif, graine 11) : prologue 6,5 min, acte I 39, acte II 47, acte III 55, acte IV 169, total 5 h 16.

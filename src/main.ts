@@ -77,8 +77,8 @@ function applySettings(): void {
 
 // ------------------------------------------------------------------ Effets des événements
 
-function screenPan(ci: number, si: number): number {
-  const p = worldOfStation(G.s, ci, si, 0);
+function screenPan(fi: number, l: number, si: number): number {
+  const p = worldOfStation(G.s, fi, l, si);
   const x = cw / 2 + (p.x - cam.x) * cam.zoom;
   return Math.max(-1, Math.min(1, (x / cw) * 2 - 1));
 }
@@ -94,37 +94,37 @@ function handleEvents(events: SimEvent[]): void {
     switch (e.type) {
       case 'piece': {
         if (pieces++ > 30) break;
-        const st = s.chains[e.chain]?.stations[e.station];
-        if (!st) break;
+        const m = s.factories[e.factory]?.lines[e.line]?.slots[e.station];
+        if (!m) break;
         if (interiorVisible()) {
-          const p = worldOfStation(s, e.chain, e.station, e.unit);
-          if (e.station === 1) sparks(p.x, p.y, st.tier ? 6 : 4);
+          const p = worldOfStation(s, e.factory, e.line, e.station);
+          if (e.station === 1) sparks(p.x, p.y, m.tier ? 6 : 4);
           else if (e.station === 0) sparks(p.x, p.y, 3, '#ffe9b0');
-          else if (st.tier === 4) sparks(p.x, p.y + 6, 2, '#4fd8ff');
+          else if (m.tier === 4) sparks(p.x, p.y + 6, 2, '#4fd8ff');
         }
-        workSound(e.station, st.tier, screenPan(e.chain, e.station));
+        workSound(e.station, m.tier, screenPan(e.factory, e.line, e.station));
         break;
       }
       case 'sale':
         sfx('coin');
         break;
       case 'breakdown':
-        sfx('fail', screenPan(e.chain, e.station));
-        toast(`⚠ Panne : ${STATION_NAMES[e.station].toLowerCase()} n°${e.unit + 1}${s.chains.length > 1 ? `, chaîne ${e.chain + 1}` : ''}${s.research.workshop ? ' (réparation lancée)' : ''}`, true);
+        sfx('fail', screenPan(e.factory, e.line, e.station));
+        toast(`⚠ Panne : ${STATION_NAMES[e.station].toLowerCase()}, chaîne ${e.line + 1}${s.factories.length > 1 ? `, usine ${e.factory + 1}` : ''}${s.research.workshop ? ' (réparation lancée)' : ''}`, true);
         break;
       case 'repaired':
-        sfx('repair', screenPan(e.chain, e.station));
-        toast(`🔧 Réparé : ${STATION_NAMES[e.station].toLowerCase()} n°${e.unit + 1}`);
+        sfx('repair', screenPan(e.factory, e.line, e.station));
+        toast(`🔧 Réparé : ${STATION_NAMES[e.station].toLowerCase()}, chaîne ${e.line + 1}`);
         break;
       case 'trained': {
         const w = s.workers.find((x) => x.id === e.worker);
         sfx('hire');
-        if (w) toast(`🎓 ${w.name} formé·e : ${LEVEL_NAMES[e.level].toLowerCase()}`);
+        if (w) toast(e.promoted ? `🎖 ${w.name} promu·e : ${LEVEL_NAMES[e.level].toLowerCase()}` : `🎓 ${w.name} : formation terminée (${w.trainings}/5)`);
         break;
       }
       case 'hrTrain': {
         const w = s.workers.find((x) => x.id === e.worker);
-        if (w) toast(`📋 RH : ${w.name} part en formation (${LEVEL_NAMES[e.level].toLowerCase()})`);
+        if (w) toast(e.promote ? `📋 RH : ${w.name} part en promotion (${LEVEL_NAMES[Math.min(4, w.level + 1)].toLowerCase()})` : `📋 RH : ${w.name} part en formation`);
         break;
       }
       case 'goal':
@@ -234,7 +234,7 @@ function title(): void {
     onContinue: () => {
       if (!f) return startNew();
       G.s = f.state;
-      G.chain = 0;
+      G.factory = 0;
       begin();
       if (f.savedAt) absence((Date.now() - f.savedAt) / 1000);
     },
@@ -371,12 +371,12 @@ stage.addEventListener('wheel', (e) => {
 stage.addEventListener('dblclick', (e) => {
   const r = stage.getBoundingClientRect();
   const h = hitTest(G.s, cam, (e.clientX - r.left) * dpr, (e.clientY - r.top) * dpr, cw, ch);
-  if (h && G.s.chains.length > 1) {
-    G.chain = h.hall;
-    const o = hallOrigin(h.hall, G.s.chains.length);
+  if (h && G.s.factories.length > 1) {
+    G.factory = h.hall;
+    const o = hallOrigin(h.hall, G.s.factories.length);
     cam.tx = o.x + 200;
-    cam.ty = o.y + 160;
-    cam.tz = Math.max(cam.tz, Math.min(cw / 420, ch / 340));
+    cam.ty = o.y + 202;
+    cam.tz = Math.max(cam.tz, Math.min(cw / 420, ch / 424));
     cam.user = true;
     invalidatePanel();
     setTab('atelier');
@@ -487,11 +487,12 @@ function ambientTick(view: GameState): void {
   let units = 0;
   let robots = 0;
   let black = 0;
-  for (const c of view.chains) for (const st of c.stations) for (const u of st.units) {
+  for (const f of view.factories) for (const l of f.lines) for (const u of l.slots) {
+    if (!u) continue;
     units++;
     if (u.busy) busy++;
-    if (st.tier === 3) robots++;
-    if (st.tier === 4) black++;
+    if (u.tier === 3) robots++;
+    if (u.tier === 4) black++;
   }
   const lit = G.finale ? 0 : 1;
   ambience({
@@ -565,11 +566,11 @@ function tick(now: number): void {
   if (hoverT > 0.1) {
     hoverT = 0;
     hover = mouse.in && !drag?.moved ? hitTest(view, cam, mouse.x * dpr, mouse.y * dpr, cw, ch) : null;
-    showTooltip(hover && (hover.worker >= 0 || hover.station >= 0 || view.chains.length > 1) ? hover : null, mouse.x, mouse.y);
+    showTooltip(hover && (hover.worker >= 0 || hover.station !== -1 || hover.line >= 0 || view.factories.length > 1) ? hover : null, mouse.x, mouse.y);
   }
   const useGl = post.ok && G.settings.fx;
   drawScene({ ctx, glow: useGl ? gctx : null, cw, ch }, view, cam, {
-    T: now / 1000, red: inRed(), rev: G.rev, selected: G.chain, reduced: reducedMotion(), finale: fin, hover,
+    T: now / 1000, red: inRed(), rev: G.rev, selected: G.factory, reduced: reducedMotion(), finale: fin, hover,
   }, rdt);
   post.render(useGl, cv, glowCv, now / 1000, view, inRed());
   updateGauge();

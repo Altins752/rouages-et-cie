@@ -1,90 +1,111 @@
 /**
  * Conseiller : propose des plans d'achat et leur temps de retour estimé.
- * Un plan peut compter plusieurs étapes (équilibrer une chaîne, la moderniser
- * entièrement) ; on n'exécute que la première, puis on réévalue.
+ * Chaque plan est joué sur une copie légère de l'usine concernée, avec les vraies
+ * actions, puis évalué en régime établi. On n'exécute que la première étape payante.
  * Utilisé par le superviseur de chaîne (recommandations) et l'IA du simulateur.
  */
-import { MATERIALS, MAX_UNITS, MAX_WORKERS_PER_CHAIN, ROBOT_TIER, TIER_OPERATOR_LEVEL, TOOL_MAX } from '../data/balance';
-import { bestChainIndex, maxChains, tierAllowed, trainCost } from './actions';
-import { clonePlan, estimateChain, estimateFactory, factoryPlans } from './analysis';
-import type { ChainPlan } from './analysis';
-import { materialOk, modernizeCost, newChainCost, toolCost, unitPrice } from './formulas';
-import type { GameState } from './types';
+import { MATERIALS, ROBOT_TIER, TIER_OPERATOR_LEVEL, TOOL_MAX, TRAINING } from '../data/balance';
+import * as A from './actions';
+import { estimateFactory, estimateSite } from './analysis';
+import type { EstimateCache } from './analysis';
+import { canTrain, conveyorCost, materialOk, promotionCost, toolCost, trainingCost } from './formulas';
+import type { Factory, GameState, Worker } from './types';
 
-export type StepKind = 'hire' | 'unit' | 'tool' | 'modernize' | 'material' | 'chain';
+export type StepKind = 'hire' | 'poly' | 'unit' | 'modernize' | 'tool' | 'conveyor' | 'train' | 'material' | 'factory';
 
 export interface PlanStep {
   kind: StepKind;
-  chain: number;
+  factory: number;
   station: number;
+  line: number;
+  tier: number;
   material: number;
+  worker: number;
   cost: number;
 }
 
 export interface Candidate {
-  kind: 'hire' | 'unit' | 'tool' | 'modernize' | 'material' | 'chain' | 'balance' | 'upgrade';
-  chain: number;
+  kind: 'hire' | 'poly' | 'unit' | 'line' | 'modernize' | 'upgrade' | 'tool' | 'conveyor' | 'train' | 'material' | 'factory';
+  factory: number;
   steps: PlanStep[];
   cost: number;
   gain: number;
   payback: number;
 }
 
-/** Coût cumulé de formation d'un manœuvre jusqu'au niveau `level`. */
-function trainUpTo(s: GameState, level: number): number {
-  let c = 0;
-  for (let l = 2; l <= level; l++) c += trainCost(s, l);
+const step = (kind: StepKind, factory: number, o: Partial<PlanStep> = {}): PlanStep => ({
+  kind, factory, station: -1, line: -1, tier: -1, material: -1, worker: -1, cost: 0, ...o,
+});
+
+function deepFactory(f: Factory): Factory {
+  return { ...f, lines: f.lines.map((l) => ({ ...l, buf: [...l.buf], slots: l.slots.map((m) => (m ? { ...m } : null)) })) };
+}
+
+/** Copie légère : l'usine fi et ses ouvriers sont copiés, le reste est partagé (lecture seule). */
+function cloneFor(s: GameState, fi: number, tooling = false): GameState {
+  const c: GameState = {
+    ...s,
+    money: Infinity,
+    factories: s.factories.slice(),
+    workers: s.workers.map((w) => (w.factory === fi ? { ...w } : w)),
+    stats: { ...s.stats },
+    fx: [],
+  };
+  if (fi >= 0 && fi < s.factories.length) c.factories[fi] = deepFactory(s.factories[fi]);
+  if (tooling) c.tooling = s.tooling.map((r) => [...r]);
   return c;
 }
 
-function humanUnits(p: ChainPlan): number {
-  let n = 0;
-  for (let si = 0; si < 4; si++) if (p.tiers[si] < ROBOT_TIER) n += p.units[si];
-  return n;
-}
-
-function requiredOps(p: ChainPlan, req: number): number {
-  let n = 0;
-  for (let si = 0; si < 4; si++) if (p.tiers[si] < ROBOT_TIER && TIER_OPERATOR_LEVEL[p.tiers[si]] >= req) n += p.units[si];
-  return n;
-}
-
-/**
- * Complète l'équipe du plan : un opérateur qualifié par unité humaine, un technicien
- * si robots. Former un ouvrier ne lui retire pas ses compétences : on forme si
- * l'équipe est assez nombreuse, sinon on embauche.
- */
-function staffPlan(s: GameState, p: ChainPlan): number {
+/** Coût pour qualifier un ouvrier jusqu'au niveau voulu (formations restantes et promotions), appliqué tout de suite. */
+function qualify(s: GameState, w: Worker, level: number): number {
   let cost = 0;
-  const robot = p.tiers.some((t) => t === ROBOT_TIER);
-  const bodies = humanUnits(p) + (robot ? 1 : 0);
-  for (const req of robot ? [4, 3, 2, 1] : [3, 2, 1]) {
-    const need = req === 4 ? 1 : requiredOps(p, req);
-    let have = p.levels.filter((l) => l >= req).length;
-    while (have < need) {
-      let k = -1;
-      for (let i = 0; i < p.levels.length; i++) if (p.levels[i] < req && (k < 0 || p.levels[i] > p.levels[k])) k = i;
-      if (k >= 0 && p.levels.length >= bodies) {
-        cost += trainUpTo(s, req) - trainUpTo(s, p.levels[k]);
-        p.levels[k] = req;
-      } else {
-        cost += trainUpTo(s, req);
-        p.levels.push(req);
-      }
-      have++;
+  let guard = 0;
+  while (w.level < level && guard++ < 40) {
+    while (w.trainings < TRAINING.perLevel) {
+      cost += trainingCost(s, w);
+      w.trainings++;
+      w.trained++;
     }
+    cost += promotionCost(s, w);
+    w.level++;
+    w.trainings = 0;
   }
   return cost;
 }
 
-function bestMaterial(s: GameState, p: ChainPlan, others: ChainPlan[], ci: number): number {
-  let best = p.material;
+/** Remplit les postes vacants de l'usine et qualifie chaque titulaire pour sa machine. */
+function staffAll(s: GameState, fi: number): number {
+  let cost = 0;
+  for (let k = 0; k < 24 && A.freePosts(s, fi).length; k++) A.hire(s, fi);
+  const f = s.factories[fi];
+  for (const w of s.workers) {
+    if (w.factory !== fi || w.kind !== 'post') continue;
+    const m = f.lines[w.line]?.slots[w.station];
+    if (m && m.tier < ROBOT_TIER) cost += qualify(s, w, TIER_OPERATOR_LEVEL[m.tier]);
+  }
+  if (f.lines.some((l) => l.slots.some((m) => m && m.tier === ROBOT_TIER)) && !s.workers.some((w) => w.factory === fi && w.level >= 4)) {
+    let w = s.workers.filter((x) => x.factory === fi && x.kind !== 'crank').sort((a, b) => b.level - a.level)[0];
+    if (!w) {
+      A.hirePoly(s, fi);
+      w = s.workers[s.workers.length - 1];
+    }
+    if (w) cost += qualify(s, w, 4);
+  }
+  return cost;
+}
+
+function bestMaterial(s: GameState, fi: number, cache: EstimateCache): number {
+  const f = s.factories[fi];
+  let best = f.material;
   let bv = -Infinity;
   for (let m = 0; m < MATERIALS.length; m++) {
-    if (!s.research.materials[m]) continue;
-    if (p.tiers[1] < MATERIALS[m].minTier || p.tiers[2] < MATERIALS[m].minTier) continue;
-    const np = { ...p, material: m };
-    const v = estimateFactory(s, others.map((x, i) => (i === ci ? np : x))).net;
+    if (!materialOk(s, f, m)) continue;
+    const prev = f.material;
+    f.material = m;
+    cache.delete(f);
+    const v = estimateSite(s, cache).net;
+    cache.delete(f);
+    f.material = prev;
     if (v > bv) {
       bv = v;
       best = m;
@@ -93,131 +114,185 @@ function bestMaterial(s: GameState, p: ChainPlan, others: ChainPlan[], ci: numbe
   return best;
 }
 
-/** Ajoute des unités au poste le plus faible jusqu'à dépasser `target` pièces/s. */
-function balancePlan(s: GameState, p: ChainPlan, target: number, ci: number, steps: PlanStep[]): number | null {
-  let cost = 0;
-  for (let k = 0; k < 16; k++) {
-    const e = estimateChain(s, p);
-    if (e.x >= target) return cost;
-    // capacité brute de chaque poste
-    const raw = [0, 1, 2, 3].map((si) => p.units[si] / e.cycles[si]);
-    let si = 0;
-    for (let j = 1; j < 4; j++) if (raw[j] < raw[si]) si = j;
-    if (p.units[si] >= MAX_UNITS) {
-      // goulot plein : outillage
-      if (p.tools[si] < TOOL_MAX) {
-        const c = toolCost(p.tiers[si], si, p.tools[si]);
-        p.tools[si]++;
-        cost += c;
-        steps.push({ kind: 'tool', chain: ci, station: si, material: p.material, cost: c });
-        continue;
-      }
-      return null;
-    }
-    const c = unitPrice(p.tiers[si], si, p.units[si] + 1);
-    p.units[si]++;
-    cost += c;
-    steps.push({ kind: 'unit', chain: ci, station: si, material: p.material, cost: c });
-    const sc = staffPlan(s, p);
-    cost += sc;
-    if (sc > 0) steps.push({ kind: 'hire', chain: ci, station: -1, material: p.material, cost: sc });
-  }
-  return estimateChain(s, p).x >= target ? cost : null;
-}
-
 export function candidates(s: GameState): Candidate[] {
-  const plans = factoryPlans(s);
-  const base = estimateFactory(s, plans).net;
+  const cache: EstimateCache = new Map();
+  const base = estimateSite(s, cache).net;
   const out: Candidate[] = [];
-  const push = (kind: Candidate['kind'], chain: number, ps: ChainPlan[], steps: PlanStep[], cost: number) => {
+  const push = (kind: Candidate['kind'], fi: number, c: GameState, steps: PlanStep[], cost: number, useCache = true) => {
     if (!steps.length) return;
-    const gain = estimateFactory(s, ps).net - base;
+    let local: EstimateCache | undefined;
+    if (useCache) {
+      local = new Map(cache);
+      if (fi >= 0 && fi < s.factories.length) local.delete(s.factories[fi]);
+    }
+    const gain = estimateSite(c, local).net - base;
     if (gain <= 1e-6) return;
-    out.push({ kind, chain, steps, cost: Math.max(cost, 0.01), gain, payback: Math.max(cost, 0.01) / gain });
+    const cc = Math.max(cost, 0.01);
+    out.push({ kind, factory: fi, steps, cost: cc, gain, payback: cc / gain });
   };
-  plans.forEach((p, ci) => {
-    const swap = (np: ChainPlan) => plans.map((x, i) => (i === ci ? np : x));
-    const cur = estimateChain(s, p).x;
-    // Embaucher un manœuvre
-    if (p.levels.length < MAX_WORKERS_PER_CHAIN) {
-      const np = clonePlan(p);
-      np.levels.push(1);
-      push('hire', ci, swap(np), [{ kind: 'hire', chain: ci, station: -1, material: p.material, cost: 0 }], 0.03 * 120);
+
+  s.factories.forEach((f, fi) => {
+    // Embaucher au poste libre
+    if (A.freePosts(s, fi).length) {
+      const c = cloneFor(s, fi);
+      A.hire(c, fi);
+      push('hire', fi, c, [step('hire', fi)], 0.03 * 120);
     }
-    for (let si = 0; si < 4; si++) {
-      const t = p.tiers[si];
-      if (p.units[si] < MAX_UNITS) {
-        const np = clonePlan(p);
-        np.units[si]++;
-        const c = unitPrice(t, si, p.units[si] + 1);
-        const steps: PlanStep[] = [{ kind: 'unit', chain: ci, station: si, material: p.material, cost: c }];
-        const sc = staffPlan(s, np);
-        if (sc > 0) steps.push({ kind: 'hire', chain: ci, station: -1, material: p.material, cost: sc });
-        push('unit', ci, swap(np), steps, c + sc);
+    // Un polyvalent de plus
+    if (A.polyCount(s, fi) < 6) {
+      const c = cloneFor(s, fi);
+      A.hirePoly(c, fi);
+      push('poly', fi, c, [step('poly', fi)], 0.03 * 0.7 * 120);
+    }
+    for (let st = 0; st < 4; st++) {
+      // Un poste de plus (sur la première chaîne qui ne l'a pas) et son ouvrier
+      if (A.stationCount(f, st) < f.lines.length) {
+        const c = cloneFor(s, fi);
+        const cost = A.addUnitCost(c, fi, st);
+        A.addUnit(c, fi, st);
+        const q = staffAll(c, fi);
+        push('unit', fi, c, [step('unit', fi, { station: st, cost }), step('hire', fi)], cost + q);
       }
-      if (p.tools[si] < TOOL_MAX) {
-        const np = clonePlan(p);
-        np.tools[si]++;
-        const c = toolCost(t, si, p.tools[si]);
-        push('tool', ci, swap(np), [{ kind: 'tool', chain: ci, station: si, material: p.material, cost: c }], c);
+      // Moderniser la moins moderne de ce poste
+      const tgt = A.modernizeTarget(s, fi, st);
+      if (tgt) {
+        const c = cloneFor(s, fi);
+        A.modernize(c, fi, st);
+        const q = staffAll(c, fi);
+        push('modernize', fi, c, [step('modernize', fi, { station: st, line: tgt.line, cost: tgt.cost })], tgt.cost + q);
       }
     }
-    // Équilibrer la chaîne
-    for (const f of [1.15, 1.5, 2]) {
-      const np = clonePlan(p);
+    // Compléter la prochaine chaîne (tous ses postes manquants et leurs ouvriers)
+    for (let next = 0; next < f.lines.length; next++) {
+      if (!f.lines[next].slots.some((m) => !m)) continue;
+      const c = cloneFor(s, fi);
       const steps: PlanStep[] = [];
-      const c = balancePlan(s, np, cur * f + 1e-3, ci, steps);
-      if (c !== null) push('balance', ci, swap(np), steps, c);
-    }
-    // Moderniser toute la chaîne jusqu'à un palier (+ meilleur matériau + équilibrage)
-    const minTier = Math.min(...p.tiers);
-    for (let T = minTier + 1; tierAllowed(s, T); T++) {
-      for (const f of [0, 1.3, 2, 3]) {
-        const np = clonePlan(p);
-        const steps: PlanStep[] = [];
-        let cost = 0;
-        const c = s.chains[ci];
-        const order = [0, 1, 2, 3].filter((si) => p.tiers[si] < T).sort((a, b) => b - a);
-        for (const si of order) {
-          for (let t = p.tiers[si]; t < T; t++) {
-            const mc = modernizeCost({ tier: t, tool: 0, units: c.stations[si].units }, si);
-            cost += mc;
-            steps.push({ kind: 'modernize', chain: ci, station: si, material: p.material, cost: mc });
-          }
-          np.tiers[si] = T;
-          np.tools[si] = 0;
-        }
-        const sc = staffPlan(s, np);
-        cost += sc;
-        if (sc > 0) steps.push({ kind: 'hire', chain: ci, station: -1, material: np.material, cost: sc });
-        const m = bestMaterial(s, np, plans, ci);
-        if (m !== np.material) {
-          np.material = m;
-          steps.push({ kind: 'material', chain: ci, station: -1, material: m, cost: 0 });
-        }
-        // Objectif en valeur : un matériau plus cher peut sortir moins de pièces.
-        const target = (cur * MATERIALS[p.material].price * f) / MATERIALS[np.material].price;
-        const bc = f === 0 ? 0 : balancePlan(s, np, Math.max(target, 1e-3), ci, steps);
-        if (bc === null) continue;
-        push('upgrade', ci, swap(np), steps, cost + bc);
+      let cost = 0;
+      for (let st = 0; st < 4; st++) {
+        if (c.factories[fi].lines[next].slots[st]) continue;
+        const uc = A.addUnitCost(c, fi, st);
+        A.addUnit(c, fi, st, next);
+        cost += uc;
+        steps.push(step('unit', fi, { station: st, line: next, cost: uc }));
       }
+      cost += staffAll(c, fi);
+      push('line', fi, c, steps, cost);
+      if (!f.lines[next].slots.some(Boolean)) break; // une seule chaîne vide à la fois
     }
+    // Moderniser toute l'usine jusqu'à un palier (+ meilleur matériau)
+    let minTier = 9;
+    for (const l of f.lines) for (const m of l.slots) if (m) minTier = Math.min(minTier, m.tier);
+    for (let T = minTier + 1; minTier < 9 && A.tierAllowed(s, T); T++) {
+      const c = cloneFor(s, fi);
+      const steps: PlanStep[] = [];
+      let cost = 0;
+      for (let st = 3; st >= 0; st--) {
+        for (let k = 0; k < 16; k++) {
+          const tgt = A.modernizeTarget(c, fi, st);
+          if (!tgt || tgt.tier >= T) break;
+          steps.push(step('modernize', fi, { station: st, line: tgt.line, cost: tgt.cost }));
+          cost += tgt.cost;
+          A.modernize(c, fi, st);
+        }
+      }
+      cost += staffAll(c, fi);
+      const localCache: EstimateCache = new Map(cache);
+      localCache.delete(s.factories[fi]);
+      const m = bestMaterial(c, fi, localCache);
+      if (m !== c.factories[fi].material) {
+        c.factories[fi].material = m;
+        steps.push(step('material', fi, { material: m }));
+      }
+      push('upgrade', fi, c, steps, cost);
+    }
+    // Convoyeurs (et l'ouvrier à la manivelle)
+    f.lines.forEach((line, l) => {
+      if (line.conveyor || line.slots.filter(Boolean).length < 2) return;
+      const cost = conveyorCost(f, l);
+      const c = cloneFor(s, fi);
+      A.buyConveyor(c, fi, l);
+      A.hire(c, fi);
+      push('conveyor', fi, c, [step('conveyor', fi, { line: l, cost }), step('hire', fi)], cost);
+    });
+    // Former l'ouvrier qui freine sa chaîne
+    const est = estimateFactory(s, fi);
+    f.lines.forEach((line, l) => {
+      const b = est.lineBottleneck[l];
+      if (b < 0) return;
+      const m = line.slots[b];
+      if (!m || m.post < 0) return;
+      const w = s.workers.find((x) => x.id === m.post);
+      if (!w || !canTrain(w) || w.level < TIER_OPERATOR_LEVEL[m.tier]) return;
+      const c = cloneFor(s, fi);
+      const cw = c.workers.find((x) => x.id === w.id)!;
+      const cost = trainingCost(s, w);
+      cw.trainings++;
+      cw.trained++;
+      push('train', fi, c, [step('train', fi, { worker: w.id, cost })], cost);
+    });
+    // Former d'un coup tous les ouvriers d'une chaîne (chaîne équilibrée)
+    f.lines.forEach((line) => {
+      const ws = line.slots
+        .map((m) => (m && m.post >= 0 ? s.workers.find((x) => x.id === m.post) : undefined))
+        .filter((w): w is Worker => !!w && canTrain(w));
+      if (ws.length < 2) return;
+      const c = cloneFor(s, fi);
+      const steps: PlanStep[] = [];
+      let cost = 0;
+      for (const w of ws) {
+        const cw = c.workers.find((x) => x.id === w.id)!;
+        const k = trainingCost(s, w);
+        cost += k;
+        cw.trainings++;
+        cw.trained++;
+        steps.push(step('train', fi, { worker: w.id, cost: k }));
+      }
+      push('train', fi, c, steps, cost);
+    });
     // Changer de matériau
     for (let m = 0; m < MATERIALS.length; m++) {
-      if (m === p.material || !materialOk(s, s.chains[ci], m)) continue;
-      const np = clonePlan(p);
-      np.material = m;
-      push('material', ci, swap(np), [{ kind: 'material', chain: ci, station: -1, material: m, cost: 0 }], 0.01);
+      if (m === f.material || !materialOk(s, f, m)) continue;
+      const c = cloneFor(s, fi);
+      c.factories[fi].material = m;
+      push('material', fi, c, [step('material', fi, { material: m })], 0.01);
     }
   });
-  if (s.chains.length < maxChains(s)) {
-    const bi = bestChainIndex(s);
-    const np: ChainPlan = { ...clonePlan(plans[bi]), levels: [] };
-    const cc = newChainCost(s, s.chains[bi]);
-    const sc = staffPlan(s, np);
-    const steps: PlanStep[] = [{ kind: 'chain', chain: s.chains.length, station: -1, material: np.material, cost: cc }];
-    if (sc > 0) steps.push({ kind: 'hire', chain: s.chains.length, station: -1, material: np.material, cost: sc });
-    push('chain', s.chains.length, [...plans, np], steps, cc + sc);
+  // Outillage (toutes les usines)
+  for (let st = 0; st < 4; st++) {
+    for (const tier of A.tiersInUse(s, st)) {
+      const lvl = A.toolLevel(s, tier, st);
+      if (lvl >= TOOL_MAX || tier > s.research.tier) continue;
+      const c = cloneFor(s, -1, true);
+      c.tooling[tier][st] = lvl + 1;
+      const cost = toolCost(tier, st, lvl);
+      push('tool', -1, c, [step('tool', -1, { station: st, tier, cost })], cost, false);
+    }
+  }
+  // Outillage de tous les postes d'un palier, d'un niveau (lignes équilibrées)
+  for (let tier = 0; tier <= s.research.tier; tier++) {
+    const sts = [0, 1, 2, 3].filter((st) => A.tiersInUse(s, st).includes(tier) && A.toolLevel(s, tier, st) < TOOL_MAX);
+    if (sts.length < 2) continue;
+    const c = cloneFor(s, -1, true);
+    const steps: PlanStep[] = [];
+    let cost = 0;
+    for (const st of sts) {
+      const lvl = A.toolLevel(s, tier, st);
+      const k = toolCost(tier, st, lvl);
+      c.tooling[tier][st] = lvl + 1;
+      cost += k;
+      steps.push(step('tool', -1, { station: st, tier, cost: k }));
+    }
+    steps.sort((a, b) => a.cost - b.cost);
+    push('tool', -1, c, steps, cost, false);
+  }
+  // Nouvelle usine
+  if (s.factories.length < A.maxFactories(s)) {
+    const c = cloneFor(s, -1);
+    const cost = A.factoryCost(s);
+    A.buyFactory(c);
+    const fi = c.factories.length - 1;
+    const q = staffAll(c, fi);
+    push('factory', fi, c, [step('factory', fi, { cost }), step('hire', fi)], cost + q);
   }
   out.sort((a, b) => a.payback - b.payback);
   return out;
@@ -229,16 +304,10 @@ export function bestCandidate(s: GameState, horizon = Infinity): Candidate | nul
   return c[0] ?? null;
 }
 
-/** Coût de la première étape réellement payante d'un plan (avec la formation qui la suit). */
+const PAYING: StepKind[] = ['unit', 'modernize', 'tool', 'conveyor', 'train', 'factory'];
+
+/** Coût de la première étape payante d'un plan. */
 export function firstStepCost(c: Candidate): number {
-  let cost = 0;
-  for (const st of c.steps) {
-    cost += st.cost;
-    if (st.kind !== 'hire' && st.kind !== 'material' && cost > 0) {
-      const next = c.steps[c.steps.indexOf(st) + 1];
-      if (next && next.kind === 'hire') cost += next.cost;
-      break;
-    }
-  }
-  return cost;
+  const st = c.steps.find((x) => PAYING.includes(x.kind));
+  return st ? st.cost : 0;
 }

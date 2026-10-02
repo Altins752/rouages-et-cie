@@ -18,26 +18,25 @@ function act2(seed = 5): GameState {
 }
 
 describe('acte II : moral', () => {
-  it('sans relève, l’ouvrier du goulot s’épuise ; avec relève, le moral tient', () => {
-    // Frappe mécanique : un seul opérateur qualifié, les autres sont manœuvres.
+  it('sans relève, l’ouvrier du goulot s’épuise ; un polyvalent qualifié le relève', () => {
+    // Frappe mécanique : seul son opérateur sait la conduire, Marcel ne peut pas le relever.
     const run = (relief: boolean) => {
       const s = act2();
-      A.hireRole(s, 'foreman');
       A.modernize(s, 0, 1);
       A.addUnit(s, 0, 0);
       A.addUnit(s, 0, 2);
-      for (let i = 0; i < 5; i++) A.hire(s, 0);
-      s.workers[1].level = 2;
+      for (let i = 0; i < 6; i++) A.hire(s, 0);
+      for (const w of s.workers) if (w.station === 1) w.level = 2;
       if (relief) {
-        A.hire(s, 0);
-        s.workers[6].level = 2;
+        A.hirePoly(s, 0);
+        s.workers[s.workers.length - 1].level = 2;
       }
       advance(s, 2400, { red: false }, 0.25);
       return Math.min(...s.workers.map((w) => w.morale));
     };
     const alone = run(false);
     const relieved = run(true);
-    expect(alone).toBeLessThan(0.45);
+    expect(alone).toBeLessThan(0.5);
     expect(relieved).toBeGreaterThan(alone + 0.15);
   });
 
@@ -87,10 +86,11 @@ describe('acte II : énergie', () => {
 
   it('les machines consomment : la facture suit la puissance', () => {
     const s = act2();
-    for (let si = 0; si < 4; si++) {
-      A.modernize(s, 0, si);
-      A.modernize(s, 0, si);
+    for (let st = 0; st < 4; st++) {
+      A.modernize(s, 0, st);
+      A.modernize(s, 0, st);
     }
+    for (let i = 0; i < 4; i++) A.hire(s, 0);
     for (const w of s.workers) w.level = 3;
     advance(s, 30, { red: false }, 0.1);
     expect(s.energy.demand).toBeGreaterThan(4 * 25 * ENERGY.idleShare - 1);
@@ -145,20 +145,49 @@ describe('acte II : contrats et Ferrum', () => {
 });
 
 describe('acte II : rôles et maintenance', () => {
-  it('les RH forment seules un opérateur manquant', () => {
+  it('les RH forment puis promeuvent seules l’ouvrier d’une machine modernisée', () => {
     const s = act2();
+    for (let i = 0; i < 4; i++) A.hire(s, 0);
     A.modernize(s, 0, 1);
-    for (let i = 0; i < 3; i++) A.hire(s, 0);
     A.hireRole(s, 'hr');
+    const w = s.workers.find((x) => x.station === 1)!;
     advance(s, 6, { red: false }, 0.25);
-    expect(s.workers.some((w) => w.state === 'train' && w.trainTo === 2)).toBe(true);
+    expect(w.state).toBe('train');
+    advance(s, 600, { red: false }, 0.25);
+    expect(w.level).toBe(2);
+    expect(s.fx.some((e) => e.type === 'hrTrain' && e.promote)).toBe(true);
+  });
+
+  it('l’ingénieur méthodes modernise selon la consigne, une fois l’ouvrier prêt', () => {
+    const s = act2();
+    for (let i = 0; i < 4; i++) A.hire(s, 0);
+    A.hireRole(s, 'methods');
+    A.setMethodsTarget(s, 1, 1);
+    A.setMethodsActive(s, true);
+    advance(s, 30, { red: false }, 0.25);
+    // l'ouvrier n'a pas le niveau : la machine attend
+    expect(s.factories[0].lines[0].slots[1]!.tier).toBe(0);
+    const w = s.workers.find((x) => x.station === 1)!;
+    w.level = 2;
+    advance(s, 30, { red: false }, 0.25);
+    expect(s.factories[0].lines[0].slots[1]!.tier).toBe(1);
+    expect(s.factories[0].lines[0].slots[2]!.tier).toBe(0);
+    expect(s.fx.some((e) => e.type === 'methods')).toBe(true);
+  });
+
+  it('un rôle se congédie : son salaire s’arrête', () => {
+    const s = act2();
+    A.hireRole(s, 'hr');
+    expect(A.dismissRole(s, 'hr').ok).toBe(true);
+    expect(s.roles.hr).toBe(false);
+    expect(A.dismissRole(s, 'hr').ok).toBe(false);
   });
 
   it('la maintenance préventive révise avant la panne', () => {
     const s = act2();
     A.modernize(s, 0, 1);
     A.research(s, 'preventive');
-    const u = s.chains[0].stations[1].units[0];
+    const u = s.factories[0].lines[0].slots[1]!;
     u.wear = WEAR.preventiveAt + 0.01;
     advance(s, 0.25, { red: false }, 0.25);
     expect(u.service).toBeGreaterThan(0);
@@ -170,8 +199,9 @@ describe('acte II : rôles et maintenance', () => {
     const s = act2();
     A.modernize(s, 0, 1);
     A.research(s, 'workshop');
+    for (let i = 0; i < 4; i++) A.hire(s, 0);
     for (const w of s.workers) w.level = 2;
-    const u = s.chains[0].stations[1].units[0];
+    const u = s.factories[0].lines[0].slots[1]!;
     u.wear = 1;
     let broke = false;
     for (let k = 0; k < 4000 && !broke; k++) {

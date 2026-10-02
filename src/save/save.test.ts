@@ -14,7 +14,8 @@ describe('sauvegarde versionnée', () => {
     const f = deserialize(serialize(s, 1234))!;
     expect(f.savedAt).toBe(1234);
     expect(f.state.workers.length).toBe(2);
-    expect(f.state.chains[0].stations[3].tool).toBe(1);
+    expect(f.state.tooling[0][3]).toBe(1);
+    expect(f.state.factories[0].lines[0].slots[0]!.post).toBe(s.workers[1].id);
     expect(f.state.t).toBeCloseTo(s.t, 6);
     // la partie reprend à l'identique
     s.fx = [];
@@ -40,9 +41,10 @@ describe('sauvegarde versionnée', () => {
   it('applique les migrations dans l’ordre', () => {
     const s = createGame(3);
     const raw = JSON.parse(serialize(s, 0));
-    raw.version = 0;
+    const prev = SAVE_VERSION - 1;
+    raw.version = prev;
     raw.state.money = 5;
-    migrations[0] = (d) => {
+    migrations[prev] = (d) => {
       (d.state as { money: number }).money = 42;
       return d;
     };
@@ -51,17 +53,17 @@ describe('sauvegarde versionnée', () => {
       expect(f.version).toBe(SAVE_VERSION);
       expect(f.state.money).toBe(42);
     } finally {
-      delete migrations[0];
+      delete migrations[prev];
     }
   });
 
-  it('v1 → v2 : les contrats en cours gardent leurs pièces déjà comptées', () => {
+  it('une partie d’avant la refonte (v1, v2) n’est pas reprise : nouvelle partie', () => {
     const s = createGame(3);
     const raw = JSON.parse(serialize(s, 0));
-    raw.version = 1;
-    raw.state.spot = [{ id: 1, material: 0, qty: 50, delivered: 12, price: 3, deadline: 100, duration: 120, accepted: true }];
-    const f = deserialize(JSON.stringify(raw))!;
-    expect(f.state.spot[0].counted).toBe(12);
+    for (const v of [1, 2]) {
+      raw.version = v;
+      expect(deserialize(JSON.stringify(raw))).toBeNull();
+    }
   });
 
   it('refuse une sauvegarde illisible ou d’une version future', () => {

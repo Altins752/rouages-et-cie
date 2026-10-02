@@ -3,19 +3,25 @@
  * Déterministe (aléa à graine dans l'état), avance par pas de temps de jeu.
  * Le moteur reste juste quelle que soit la taille du pas : chaque ouvrier et
  * chaque machine consomment un budget de temps et enchaînent les pièces.
+ *
+ * Une usine compte jusqu'à 4 chaînes de 4 postes. Une pièce reste sur sa chaîne ;
+ * si le poste suivant manque sur sa chaîne, elle passe sur la chaîne la moins chargée
+ * qui l'a. Les ouvriers attitrés ne quittent jamais leur poste ; les polyvalents
+ * circulent et relèvent les ouvriers fatigués ou absents.
  */
 import {
-  ACTS, BUFFER_CAP, CONTRACTS, CRISIS_GAP, ENERGY, FERRUM, MATERIALS, MORALE, PROLOGUE, ROBOT_NO_TECH_FACTOR,
-  ROBOT_TIER, BLACK_TIER, ROLES, TIER_KW, TIER_OPERATOR_LEVEL, WALK_TIME, WEAR, WORKER_SALARY, DOOR_POS,
-  REPUTATION, ASSIGN,
+  ACTS, BUFFER_CAP, CARRY_TIME, CONTRACTS, CRISIS_GAP, ENERGY, FERRUM, MATERIALS, METHODS, MORALE, POLY, PROLOGUE,
+  ROBOT_NO_TECH_FACTOR, ROBOT_TIER, BLACK_TIER, ROLES, TIER_KW, TIER_OPERATOR_LEVEL, WALK_TIME, WEAR, WORKER_SALARY,
+  DOOR_POS, REPUTATION, ASSIGN,
 } from '../data/balance';
 import { daylight, windFactor } from './env';
 import {
-  clamp, knowHow, moraleActive, moraleCap, moraleFactor, priceMult, scrapRate, specBonus, stationCycle, trainCost, trainTime,
-  unitPrice,
+  canPromote, canTrain, clamp, knowHow, machineCycle, modernizeCost, moraleActive, moraleCap, priceMult,
+  promotionCost, promotionTime, scrapRate, trainingCost, trainingTime, unitPrice, workerSpeed,
 } from './formulas';
 import { rand, randInt, randRange } from './rng';
-import type { Chain, GameState, SimEvent, Worker } from './types';
+import { machines } from './state';
+import type { Factory, GameState, Line, Machine, SimEvent, Worker } from './types';
 
 export interface StepInput {
   /** Compte-tours en zone rouge : usure ×5, plus de rebut. */
@@ -46,6 +52,9 @@ export function advance(s: GameState, total: number, input: StepInput, dt: numbe
   }
 }
 
+/** Pièces sorties par machine pendant le pas (cadence mesurée pour le contremaître). */
+const outCount = new Map<Machine, number>();
+
 export function step(s: GameState, dt: number, input: StepInput): void {
   s.t += dt;
   s.actT += dt;
@@ -56,27 +65,35 @@ export function step(s: GameState, dt: number, input: StepInput): void {
   let produced = 0;
 
   timers(s, dt);
-  if (s.roles.foreman && crossed(s.t, dt, 5)) for (let i = 0; i < s.chains.length; i++) assignHomes(s, i);
   if (s.roles.hr && crossed(s.t, dt, 5)) hrDecisions(s);
+  if (s.roles.methods && s.methods.active && crossed(s.t, dt, METHODS.period)) methodsDecisions(s);
 
   // Production
   const prodByMat = MATERIALS.map(() => 0);
-  for (const c of s.chains) for (const st of c.stations) for (const u of st.units) u.busyT = 0;
-  for (let ci = 0; ci < s.chains.length; ci++) {
-    const c = s.chains[ci];
-    const before = c.produced;
-    robots(s, c, ci, dt, input.red);
-    prodByMat[c.material] += c.produced - before;
+  outCount.clear();
+  for (const f of s.factories) for (const { m } of machines(f)) m.busyT = 0;
+  for (let fi = 0; fi < s.factories.length; fi++) {
+    const f = s.factories[fi];
+    const before = f.produced;
+    robots(s, f, fi, dt, input.red);
+    prodByMat[f.material] += f.produced - before;
   }
   for (const w of s.workers) {
-    if (w.state === 'train') continue;
-    const c = s.chains[w.chain];
-    if (!c) continue;
-    const before = c.produced;
-    workerStep(s, w, c, dt, input.red);
-    prodByMat[c.material] += c.produced - before;
+    if (w.state === 'train') {
+      w.load += (0 - w.load) * (1 - Math.exp(-dt / MORALE.loadTau));
+      continue;
+    }
+    const f = s.factories[w.factory];
+    if (!f) continue;
+    const before = f.produced;
+    if (w.kind === 'crank') crankStep(s, w, f, dt);
+    else if (w.kind === 'post') postStep(s, w, f, dt, input.red);
+    else polyStep(s, w, f, dt, input.red);
+    prodByMat[f.material] += f.produced - before;
   }
   for (let m = 0; m < prodByMat.length; m++) produced += prodByMat[m];
+  const k = 1 - Math.exp(-dt / 20);
+  for (const f of s.factories) for (const { m } of machines(f)) m.rate += ((outCount.get(m) ?? 0) / dt - m.rate) * k;
 
   flow.maintenance += wearAndBreakdowns(s, dt, input.red);
   flow.energy += energy(s, dt);
@@ -95,7 +112,7 @@ export function step(s: GameState, dt: number, input: StepInput): void {
 
   // Salaires
   let sal = 0;
-  for (const w of s.workers) sal += WORKER_SALARY[w.level];
+  for (const w of s.workers) sal += salaryOf(w);
   for (const r of ROLES) if (s.roles[r.id]) sal += r.salary;
   sal *= dt;
   s.money -= sal;
@@ -132,6 +149,11 @@ export function step(s: GameState, dt: number, input: StepInput): void {
   history(s, dt, produced, soldBase, money0);
 }
 
+export function salaryOf(w: Worker): number {
+  const base = WORKER_SALARY[w.level];
+  return w.kind === 'poly' ? base * POLY.salaryShare : base;
+}
+
 function crossed(t: number, dt: number, period: number): boolean {
   return Math.floor(t / period) !== Math.floor((t - dt) / period);
 }
@@ -144,32 +166,40 @@ function timers(s: GameState, dt: number): void {
     if (w.state !== 'train') continue;
     w.timer -= dt;
     if (w.timer <= 0) {
-      w.level = w.trainTo;
+      const promoted = w.course === 'promote';
+      if (promoted) {
+        w.level++;
+        w.trainings = 0;
+        s.stats.promotions++;
+        if (w.level === 4) s.stats.retrained++;
+      } else {
+        w.trainings++;
+        w.trained++;
+        s.stats.trainings++;
+      }
+      w.course = 'none';
       w.state = 'idle';
       w.timer = 0;
       w.pos = DOOR_POS;
       w.from = DOOR_POS;
-      if (w.level === 4) s.stats.retrained++;
-      emit(s, { type: 'trained', worker: w.id, level: w.level });
+      emit(s, { type: 'trained', worker: w.id, level: w.level, promoted });
     }
   }
-  for (let ci = 0; ci < s.chains.length; ci++) {
-    const c = s.chains[ci];
-    if (c.matChange > 0) c.matChange = Math.max(0, c.matChange - dt);
-    c.stations.forEach((st, si) =>
-      st.units.forEach((u, ui) => {
-        if (u.service <= 0) return;
-        u.service -= dt;
-        if (u.service <= 0) {
-          u.service = 0;
-          const wasRepair = u.serviceKind === 'repair';
-          u.serviceKind = 'none';
-          u.broken = false;
-          u.wear = 0;
-          if (wasRepair) emit(s, { type: 'repaired', chain: ci, station: si, unit: ui });
-        }
-      }),
-    );
+  for (let fi = 0; fi < s.factories.length; fi++) {
+    const f = s.factories[fi];
+    if (f.matChange > 0) f.matChange = Math.max(0, f.matChange - dt);
+    for (const { m, l, s: st } of machines(f)) {
+      if (m.service <= 0) continue;
+      m.service -= dt;
+      if (m.service <= 0) {
+        m.service = 0;
+        const wasRepair = m.serviceKind === 'repair';
+        m.serviceKind = 'none';
+        m.broken = false;
+        m.wear = 0;
+        if (wasRepair) emit(s, { type: 'repaired', factory: fi, line: l, station: st });
+      }
+    }
   }
   if (s.market.priceWar > 0) {
     s.market.priceWar -= dt;
@@ -180,160 +210,347 @@ function timers(s: GameState, dt: number): void {
   }
 }
 
-// ------------------------------------------------------------------ Ouvriers
+// ------------------------------------------------------------------ Flux des pièces
 
-function techPresent(s: GameState, ci: number): boolean {
-  for (const w of s.workers) if (w.chain === ci && w.level >= 4 && w.state !== 'train') return true;
-  return false;
-}
-
-function robots(s: GameState, c: Chain, ci: number, dt: number, red: boolean): void {
-  let tech: boolean | null = null;
-  for (let si = 3; si >= 0; si--) {
-    const st = c.stations[si];
-    if (st.tier < ROBOT_TIER) continue;
-    if (tech === null) tech = techPresent(s, ci);
-    const cyc = stationCycle(s, c, st, si);
-    const rate = (st.tier >= BLACK_TIER || tech ? 1 : ROBOT_NO_TECH_FACTOR) * s.energy.factor;
-    for (let ui = 0; ui < st.units.length; ui++) {
-      const u = st.units[ui];
-      if (u.broken || u.service > 0) continue;
-      let budget = dt;
-      let guard = 0;
-      while (budget > 1e-9 && guard++ < 400) {
-        if (!u.busy) {
-          if (si > 0 && c.buf[si] <= 0) break;
-          if (si < 3 && c.buf[si + 1] + inProgress(st) >= BUFFER_CAP) break;
-          if (si > 0) c.buf[si]--;
-          u.busy = true;
-          u.prog = 0;
-        }
-        const need = (cyc - u.prog) / rate;
-        const d = Math.min(budget, need);
-        u.prog += d * rate;
-        u.busyT += d;
-        budget -= d;
-        if (u.prog >= cyc - 1e-9) {
-          u.busy = false;
-          u.prog = 0;
-          complete(s, c, ci, si, ui, red);
-        }
-      }
-    }
-  }
-}
-
-function complete(s: GameState, c: Chain, ci: number, si: number, ui: number, red: boolean): void {
-  if (si < 3) {
-    c.buf[si + 1]++;
-  } else if (rand(s) < scrapRate(c, red)) {
-    c.scrapped++;
-    s.stats.scrapped++;
-    s.money -= MATERIALS[c.material].raw;
-    emit(s, { type: 'scrap', chain: ci });
-    return;
-  } else {
-    s.stock[c.material]++;
-    c.produced++;
-    s.stats.produced++;
-  }
-  emit(s, { type: 'piece', chain: ci, station: si, unit: ui });
-}
-
-interface Job { s: number; i: number }
-
-function inProgress(st: { units: { busy: boolean; worker: number }[] }): number {
-  let n = 0;
-  for (const u of st.units) if (u.busy || u.worker >= 0) n++;
-  return n;
-}
-
-/** Un collègue qualifié attend-il déjà, debout à ce poste ? */
-function idleAt(s: GameState, ci: number, si: number, req: number, except: Worker): boolean {
-  for (const o of s.workers) {
-    if (o !== except && o.chain === ci && o.state === 'idle' && o.rest <= 0 && o.level >= req && Math.abs(o.pos - si) < 0.01) return true;
-  }
-  return false;
-}
-
-function pickJob(s: GameState, c: Chain, ci: number, w: Worker): Job | null {
-  if (w.rest > 0) return null;
-  let best: Job | null = null;
-  let bs = -1e9;
-  for (let si = 3; si >= 0; si--) {
-    const st = c.stations[si];
-    if (st.tier >= ROBOT_TIER) continue;
-    if (w.level < TIER_OPERATOR_LEVEL[st.tier]) continue;
-    if (si > 0 && c.buf[si] <= 0) continue;
-    if (si < 3 && c.buf[si + 1] + inProgress(st) >= BUFFER_CAP) continue;
-    let ui = -1;
-    for (let k = 0; k < st.units.length; k++) {
-      const u = st.units[k];
-      if (!u.broken && u.service <= 0 && !u.busy && u.worker < 0) {
-        ui = k;
-        break;
-      }
-    }
-    if (ui < 0) continue;
-    // Inutile de traverser l'atelier : un collègue sur place prendra la pièce.
-    if (Math.abs(w.pos - si) > 0.01 && idleAt(s, ci, si, TIER_OPERATOR_LEVEL[st.tier], w)) continue;
-    let sc = si * ASSIGN.downstream + (w.last === si ? ASSIGN.stay : 0) - Math.abs(w.pos - si) * ASSIGN.walk;
-    if (si === 0 && c.buf[1] >= BUFFER_CAP - 1) sc -= ASSIGN.feedPenalty;
-    if (w.home >= 0) sc += w.home === si ? ASSIGN.home : -ASSIGN.notHome;
-    if (sc > bs) {
-      bs = sc;
-      best = { s: si, i: ui };
+/** Chaîne qui reçoit la sortie du poste (l, st) : la sienne si elle a le poste suivant, sinon la moins chargée qui l'a. -2 = stock, -1 = aucune. */
+export function nextLine(f: Factory, l: number, st: number): number {
+  if (st >= 3) return -2;
+  if (f.lines[l].slots[st + 1]) return l;
+  let best = -1;
+  let bv = Infinity;
+  for (let k = 0; k < f.lines.length; k++) {
+    if (!f.lines[k].slots[st + 1]) continue;
+    const v = f.lines[k].buf[st + 1];
+    if (v < bv) {
+      bv = v;
+      best = k;
     }
   }
   return best;
 }
 
-function release(c: Chain, w: Worker): void {
-  if (w.ts >= 0) {
-    const u = c.stations[w.ts]?.units[w.tu];
-    if (u && u.worker === w.id) {
-      u.worker = -1;
-      u.busy = false;
-      u.prog = 0;
+function outputSpace(f: Factory, l: number, st: number): boolean {
+  const t = nextLine(f, l, st);
+  if (t === -2) return true;
+  if (t < 0) return false;
+  return f.lines[t].buf[st + 1] < BUFFER_CAP;
+}
+
+function inputReady(line: Line, st: number): boolean {
+  return st === 0 || line.buf[st] > 0;
+}
+
+function machineFree(m: Machine): boolean {
+  return !m.broken && m.service <= 0 && !m.busy && m.user < 0;
+}
+
+/** Le convoyeur d'une chaîne tourne-t-il (convoyeur acheté et ouvrier à la manivelle présent) ? */
+export function conveyorActive(s: GameState, line: Line): boolean {
+  if (!line.conveyor || line.crank < 0) return false;
+  const w = s.workers.find((x) => x.id === line.crank);
+  return !!w && w.state !== 'train' && w.rest <= 0;
+}
+
+function controlTier(f: Factory): number {
+  let t = 0;
+  for (const l of f.lines) if (l.slots[3]) t = Math.max(t, l.slots[3]!.tier);
+  return t;
+}
+
+/** Dépose une pièce finie au poste (l, st) dans la pile suivante, ou au stock après le contrôle. */
+function deposit(s: GameState, f: Factory, fi: number, l: number, st: number, red: boolean, target = -9): void {
+  const t = target === -9 ? nextLine(f, l, st) : target;
+  if (st >= 3 || t === -2) {
+    if (rand(s) < scrapRate(f, controlTier(f), red)) {
+      f.scrapped++;
+      s.stats.scrapped++;
+      s.money -= MATERIALS[f.material].raw;
+      emit(s, { type: 'scrap', factory: fi });
+      return;
     }
-    if (w.ts > 0) c.buf[w.ts]++;
+    s.stock[f.material]++;
+    f.produced++;
+    f.lines[l].produced++;
+    s.stats.produced++;
+  } else if (t >= 0) {
+    f.lines[t].buf[st + 1]++;
+  } else {
+    // aucun poste suivant : la pièce reste en attente sur sa chaîne
+    f.lines[l].buf[Math.min(3, st + 1)]++;
   }
+}
+
+function finished(s: GameState, fi: number, l: number, st: number, m: Machine): void {
+  outCount.set(m, (outCount.get(m) ?? 0) + 1);
+  emit(s, { type: 'piece', factory: fi, line: l, station: st });
+}
+
+// ------------------------------------------------------------------ Robots
+
+function techPresent(s: GameState, fi: number): boolean {
+  for (const w of s.workers) if (w.factory === fi && w.level >= 4 && w.state !== 'train') return true;
+  return false;
+}
+
+function robots(s: GameState, f: Factory, fi: number, dt: number, red: boolean): void {
+  let tech: boolean | null = null;
+  for (let st = 3; st >= 0; st--) {
+    for (let l = 0; l < f.lines.length; l++) {
+      const line = f.lines[l];
+      const m = line.slots[st];
+      if (!m || m.tier < ROBOT_TIER || m.broken || m.service > 0) continue;
+      if (tech === null) tech = techPresent(s, fi);
+      const cyc = machineCycle(s, f.material, m.tier, st);
+      const rate = (m.tier >= BLACK_TIER || tech ? 1 : ROBOT_NO_TECH_FACTOR) * s.energy.factor;
+      let budget = dt;
+      let guard = 0;
+      while (budget > 1e-9 && guard++ < 400) {
+        if (!m.busy) {
+          if (!inputReady(line, st) || !outputSpace(f, l, st)) break;
+          if (st > 0) line.buf[st]--;
+          m.busy = true;
+          m.prog = 0;
+        }
+        const need = (cyc - m.prog) / rate;
+        const d = Math.min(budget, need);
+        m.prog += d * rate;
+        m.busyT += d;
+        budget -= d;
+        if (m.prog >= cyc - 1e-9) {
+          m.busy = false;
+          m.prog = 0;
+          deposit(s, f, fi, l, st, red);
+          finished(s, fi, l, st, m);
+        }
+      }
+    }
+  }
+}
+
+// ------------------------------------------------------------------ Ouvriers
+
+/** Rend la pièce en cours et libère la machine. */
+function abandon(f: Factory, w: Worker): void {
+  if (w.tl >= 0 && w.ts >= 0) {
+    const line = f.lines[w.tl];
+    const m = line?.slots[w.ts];
+    if (m && m.user === w.id) {
+      if (m.busy || w.state === 'walk') {
+        if (w.ts > 0) line.buf[w.ts]++;
+      }
+      m.busy = false;
+      m.prog = 0;
+      m.user = -1;
+    }
+  }
+  w.tl = -1;
   w.ts = -1;
-  w.tu = -1;
+}
+
+/** Libère un ouvrier de sa tâche (formation, licenciement, modernisation…). */
+export function releaseWorker(s: GameState, w: Worker): void {
+  const f = s.factories[w.factory];
+  if (!f) return;
+  if (w.state === 'walk' && w.walkTotal > 0) w.pos = w.ts >= 0 ? w.ts - (w.ts - w.from) * (w.timer / w.walkTotal) : w.pos;
+  if (w.state === 'carry' && w.carryTo >= 0) {
+    f.lines[w.carryLine].buf[w.carryTo]++;
+  }
+  abandon(f, w);
+  w.carryLine = -1;
+  w.carryTo = -1;
   w.state = 'idle';
   w.timer = 0;
 }
 
-/** Libère un ouvrier de sa tâche en rendant la pièce à la pile. */
-export function releaseWorker(s: GameState, w: Worker): void {
-  const c = s.chains[w.chain];
-  if (c && (w.state === 'walk' || w.state === 'work')) {
-    // position courante pour le rendu
-    if (w.state === 'walk' && w.walkTotal > 0) w.pos = w.ts - (w.ts - w.from) * (w.timer / w.walkTotal);
-    release(c, w);
+/** Fin d'une pièce par un humain : portage ou dépôt direct. Renvoie vrai s'il part porter. */
+function humanFinish(s: GameState, f: Factory, fi: number, w: Worker, l: number, st: number, red: boolean): boolean {
+  const line = f.lines[l];
+  const m = line.slots[st]!;
+  finished(s, fi, l, st, m);
+  const t = nextLine(f, l, st);
+  if (!conveyorActive(s, line) && t !== -2) {
+    w.carryLine = t >= 0 ? t : l;
+    w.carryTo = Math.min(3, st + 1);
+    w.state = 'carry';
+    w.timer = CARRY_TIME;
+    return true;
   }
+  deposit(s, f, fi, l, st, red, t);
+  return false;
 }
 
-function workerStep(s: GameState, w: Worker, c: Chain, dt: number, red: boolean): void {
+function updateLoad(w: Worker, dt: number, idle: number): void {
+  const occ = (dt - idle) / dt;
+  w.load += (occ - w.load) * (1 - Math.exp(-dt / MORALE.loadTau));
+}
+
+/** Un polyvalent qualifié est-il disponible pour relever un ouvrier de cette usine ? */
+function polyAvailable(s: GameState, fi: number, req: number): boolean {
+  for (const o of s.workers) {
+    if (o.kind === 'poly' && o.factory === fi && o.state === 'idle' && o.rest <= 0 && o.level >= req) return true;
+  }
+  return false;
+}
+
+function postStep(s: GameState, w: Worker, f: Factory, dt: number, red: boolean): void {
+  const fi = w.factory;
   let budget = dt;
   let idle = 0;
   let guard = 0;
-  // Un ouvrier qui vient de finir reprend une tâche tout de suite, même sans temps restant :
-  // sinon un autre ouvrier traité après lui pourrait lui prendre son poste.
   while (guard++ < 24) {
+    if (w.state === 'carry') {
+      if (budget <= 1e-9) break;
+      const d = Math.min(budget, w.timer);
+      w.timer -= d;
+      budget -= d;
+      if (w.timer > 1e-9) break;
+      if (w.carryTo >= 0) {
+        if (w.carryTo === 3 && w.carryLine >= 0 && !f.lines[w.carryLine].slots[3]) f.lines[w.carryLine].buf[3]++;
+        else f.lines[w.carryLine].buf[w.carryTo]++;
+      }
+      w.carryLine = -1;
+      w.carryTo = -1;
+      w.state = 'idle';
+      continue;
+    }
+    if (w.state === 'walk') {
+      if (budget <= 1e-9) break;
+      const d = Math.min(budget, w.timer);
+      w.timer -= d;
+      budget -= d;
+      if (w.timer > 1e-9) break;
+      w.pos = w.station;
+      w.state = 'idle';
+      continue;
+    }
+    if (w.state === 'work') {
+      const line = f.lines[w.line];
+      const m = line.slots[w.station];
+      if (!m || m.user !== w.id || m.broken || m.service > 0) {
+        abandon(f, w);
+        w.state = 'idle';
+        continue;
+      }
+      if (budget <= 1e-9) break;
+      const cyc = machineCycle(s, f.material, m.tier, w.station);
+      const rate = workerSpeed(s, w) * (m.tier > 0 ? s.energy.factor : 1);
+      const need = (cyc - m.prog) / rate;
+      const d = Math.min(budget, need);
+      m.prog += d * rate;
+      m.busyT += d;
+      budget -= d;
+      if (m.prog < cyc - 1e-9) break;
+      m.busy = false;
+      m.prog = 0;
+      m.user = -1;
+      w.tl = -1;
+      w.ts = -1;
+      w.last = w.station;
+      w.state = 'idle';
+      humanFinish(s, f, fi, w, w.line, w.station, red);
+      // Relève : fatigué et surchargé, il laisse la place à un polyvalent libre.
+      if (moraleActive(s) && w.load > MORALE.highLoad && w.morale < MORALE.tired && polyAvailable(s, fi, TIER_OPERATOR_LEVEL[m.tier])) {
+        w.rest = MORALE.restTime;
+      }
+      continue;
+    }
+    // idle
+    if (w.line < 0 || w.station < 0) {
+      idle = budget;
+      break;
+    }
+    if (Math.abs(w.pos - w.station) > 0.01) {
+      w.from = w.pos;
+      w.walkTotal = Math.abs(w.pos - w.station) * WALK_TIME;
+      w.timer = w.walkTotal;
+      w.state = 'walk';
+      continue;
+    }
+    if (w.rest > 0) {
+      idle = budget;
+      break;
+    }
+    const line = f.lines[w.line];
+    const m = line.slots[w.station];
+    if (!m || m.tier >= ROBOT_TIER || w.level < TIER_OPERATOR_LEVEL[m.tier] || !machineFree(m) || !inputReady(line, w.station) || !outputSpace(f, w.line, w.station)) {
+      idle = budget;
+      break;
+    }
+    if (w.station > 0) line.buf[w.station]--;
+    m.busy = true;
+    m.prog = 0;
+    m.user = w.id;
+    w.tl = w.line;
+    w.ts = w.station;
+    w.state = 'work';
+  }
+  updateLoad(w, dt, idle);
+}
+
+/** Le titulaire du poste est-il absent (formation, pause, pas encore qualifié, en route) ? */
+function postAbsent(s: GameState, m: Machine): boolean {
+  if (m.post < 0) return true;
+  const o = s.workers.find((x) => x.id === m.post);
+  if (!o) return true;
+  return o.state === 'train' || o.rest > 0 || o.level < TIER_OPERATOR_LEVEL[m.tier] || o.state === 'walk';
+}
+
+interface Job { l: number; st: number }
+
+function pickJob(s: GameState, f: Factory, w: Worker): Job | null {
+  if (w.rest > 0) return null;
+  let best: Job | null = null;
+  let bs = -1e9;
+  for (let st = 3; st >= 0; st--) {
+    for (let l = 0; l < f.lines.length; l++) {
+      const line = f.lines[l];
+      const m = line.slots[st];
+      if (!m || m.tier >= ROBOT_TIER || w.level < TIER_OPERATOR_LEVEL[m.tier] || !machineFree(m)) continue;
+      if (!inputReady(line, st) || !outputSpace(f, l, st)) continue;
+      if (!postAbsent(s, m)) continue;
+      let sc = st * ASSIGN.downstream + (w.last === st ? ASSIGN.stay : 0) - Math.abs(w.pos - st) * ASSIGN.walk;
+      if (st === 0 && line.buf[1] >= BUFFER_CAP - 1) sc -= ASSIGN.feedPenalty;
+      if (sc > bs) {
+        bs = sc;
+        best = { l, st };
+      }
+    }
+  }
+  return best;
+}
+
+function polyStep(s: GameState, w: Worker, f: Factory, dt: number, red: boolean): void {
+  const fi = w.factory;
+  let budget = dt;
+  let idle = 0;
+  let guard = 0;
+  while (guard++ < 24) {
+    if (w.state === 'carry') {
+      if (budget <= 1e-9) break;
+      const d = Math.min(budget, w.timer);
+      w.timer -= d;
+      budget -= d;
+      if (w.timer > 1e-9) break;
+      if (w.carryTo >= 0) f.lines[w.carryLine].buf[w.carryTo]++;
+      w.carryLine = -1;
+      w.carryTo = -1;
+      w.state = 'idle';
+      continue;
+    }
     if (w.state === 'idle') {
-      const job = pickJob(s, c, w.chain, w);
+      const job = pickJob(s, f, w);
       if (!job) {
         idle = budget;
         break;
       }
-      const u = c.stations[job.s].units[job.i];
-      u.worker = w.id;
-      if (job.s > 0) c.buf[job.s]--;
-      w.ts = job.s;
-      w.tu = job.i;
+      const line = f.lines[job.l];
+      const m = line.slots[job.st]!;
+      m.user = w.id;
+      if (job.st > 0) line.buf[job.st]--;
+      w.tl = job.l;
+      w.ts = job.st;
       w.from = w.pos;
-      w.walkTotal = Math.abs(w.pos - job.s) * WALK_TIME;
+      w.walkTotal = Math.abs(w.pos - job.st) * WALK_TIME;
       w.timer = w.walkTotal;
       w.state = 'walk';
     }
@@ -344,135 +561,219 @@ function workerStep(s: GameState, w: Worker, c: Chain, dt: number, red: boolean)
       budget -= d;
       if (w.timer > 1e-9) break;
       w.pos = w.ts;
-      const u = c.stations[w.ts].units[w.tu];
-      if (!u || u.broken || u.service > 0) {
-        release(c, w);
+      const m = f.lines[w.tl]?.slots[w.ts];
+      if (!m || m.broken || m.service > 0 || m.user !== w.id) {
+        if (w.ts > 0 && f.lines[w.tl]) f.lines[w.tl].buf[w.ts]++;
+        if (m && m.user === w.id) m.user = -1;
+        w.tl = -1;
+        w.ts = -1;
+        w.state = 'idle';
         continue;
       }
-      u.busy = true;
-      u.prog = 0;
+      m.busy = true;
+      m.prog = 0;
       w.state = 'work';
     }
     if (w.state === 'work') {
-      const st = c.stations[w.ts];
-      const u = st?.units[w.tu];
-      if (!u || u.broken || u.service > 0 || u.worker !== w.id) {
-        release(c, w);
+      const line = f.lines[w.tl];
+      const m = line?.slots[w.ts];
+      if (!m || m.broken || m.service > 0 || m.user !== w.id) {
+        abandon(f, w);
+        w.state = 'idle';
         continue;
       }
-      const cyc = stationCycle(s, c, st, w.ts);
-      const rate = (1 + specBonus(w, w.ts)) * moraleFactor(s, w) * (st.tier > 0 ? s.energy.factor : 1);
-      const need = (cyc - u.prog) / rate;
+      const cyc = machineCycle(s, f.material, m.tier, w.ts);
+      const rate = workerSpeed(s, w) * (m.tier > 0 ? s.energy.factor : 1);
+      const need = (cyc - m.prog) / rate;
       const d = Math.min(budget, need);
-      u.prog += d * rate;
-      u.busyT += d;
+      m.prog += d * rate;
+      m.busyT += d;
       budget -= d;
-      w.spec[w.ts] += d;
-      if (u.prog >= cyc - 1e-9) {
-        const si = w.ts;
-        const ui = w.tu;
-        u.busy = false;
-        u.prog = 0;
-        u.worker = -1;
-        w.last = si;
-        w.ts = -1;
-        w.tu = -1;
-        w.state = 'idle';
-        complete(s, c, s.chains.indexOf(c), si, ui, red);
-        // Relève : surchargé, il laisse la place à un collègue libre et souffle un moment.
-        if (moraleActive(s) && w.load > MORALE.highLoad && w.morale < MORALE.tired && reliefAvailable(s, c, w, st.tier)) {
-          w.rest = MORALE.restTime;
-          idle = budget;
-          break;
-        }
-      }
+      if (m.prog < cyc - 1e-9) break;
+      const l = w.tl;
+      const st = w.ts;
+      m.busy = false;
+      m.prog = 0;
+      m.user = -1;
+      w.tl = -1;
+      w.ts = -1;
+      w.last = st;
+      w.state = 'idle';
+      humanFinish(s, f, fi, w, l, st, red);
     }
   }
-  const occ = (dt - idle) / dt;
-  w.load += (occ - w.load) * (1 - Math.exp(-dt / MORALE.loadTau));
+  updateLoad(w, dt, idle);
 }
 
-function reliefAvailable(s: GameState, c: Chain, w: Worker, tier: number): boolean {
-  const ci = s.chains.indexOf(c);
-  const req = TIER_OPERATOR_LEVEL[tier];
-  for (const o of s.workers) {
-    if (o !== w && o.chain === ci && o.state === 'idle' && o.rest <= 0 && o.level >= req) return true;
+/** L'ouvrier à la manivelle travaille quand sa chaîne tourne. */
+function crankStep(s: GameState, w: Worker, f: Factory, dt: number): void {
+  const line = f.lines[w.line];
+  if (!line) {
+    updateLoad(w, dt, dt);
+    return;
   }
-  return false;
+  w.pos = -0.55;
+  const active = line.slots.some((m) => m && m.busy);
+  w.state = active ? 'work' : 'idle';
+  updateLoad(w, dt, active && w.rest <= 0 ? 0 : dt);
+  void s;
 }
 
-/** Postes attitrés par le contremaître : répartit les ouvriers selon la charge de chaque poste. */
-export function assignHomes(s: GameState, ci: number): void {
-  const c = s.chains[ci];
-  const ws = s.workers.filter((w) => w.chain === ci && w.state !== 'train').sort((a, b) => a.level - b.level || a.id - b.id);
-  for (const w of ws) w.home = -1;
-  const need = c.stations.map((st) => (st.tier < ROBOT_TIER ? st.units.length : 0));
-  const req = c.stations.map((st) => TIER_OPERATOR_LEVEL[st.tier]);
-  const cyc = c.stations.map((st, si) => stationCycle(s, c, st, si));
-  const ops = [0, 0, 0, 0];
-  const free = [...ws];
-  const take = (si: number): boolean => {
-    const k = free.findIndex((w) => w.level >= req[si]);
-    if (k < 0) return false;
-    free[k].home = si;
-    free.splice(k, 1);
-    ops[si]++;
-    return true;
-  };
-  // D'abord les postes les plus exigeants, un ouvrier chacun.
-  const order = [0, 1, 2, 3].filter((si) => need[si] > 0).sort((a, b) => req[b] - req[a] || cyc[b] - cyc[a]);
-  for (const si of order) take(si);
-  // Puis le poste le moins bien servi.
-  let guard = 0;
-  while (free.length && guard++ < 64) {
-    let best = -1;
-    let bv = Infinity;
-    for (const si of order) {
-      if (ops[si] >= need[si]) continue;
-      if (!free.some((w) => w.level >= req[si])) continue;
-      const v = ops[si] / cyc[si];
-      if (v < bv) {
-        bv = v;
-        best = si;
-      }
-    }
-    if (best < 0 || !take(best)) break;
+// ------------------------------------------------------------------ Opérations partagées
+
+/** Envoie un ouvrier en formation ou en promotion (sans vérifier la caisse). */
+export function startCourse(s: GameState, w: Worker, kind: 'train' | 'promote'): number {
+  const cost = kind === 'train' ? trainingCost(s, w) : promotionCost(s, w);
+  releaseWorker(s, w);
+  w.state = 'train';
+  w.course = kind;
+  w.timer = kind === 'train' ? trainingTime(s, w) : promotionTime(s, w);
+  s.money -= cost;
+  return cost;
+}
+
+/** Modernise une machine d'un palier (sans vérifier la caisse). */
+export function modernizeMachine(s: GameState, f: Factory, l: number, st: number, rank: number): number {
+  const m = f.lines[l].slots[st]!;
+  const cost = modernizeCost(m.tier, st, rank);
+  if (m.user >= 0) {
+    const u = s.workers.find((x) => x.id === m.user);
+    if (u) releaseWorker(s, u);
   }
+  m.tier++;
+  m.wear = 0;
+  m.broken = false;
+  m.service = 0;
+  m.busy = false;
+  m.prog = 0;
+  m.user = -1;
+  s.money -= cost;
+  return cost;
+}
+
+/** Rang d'une machine parmi celles de son poste dans l'usine (ordre des chaînes). */
+export function machineRank(f: Factory, l: number, st: number): number {
+  let r = 0;
+  for (let k = 0; k < l; k++) if (f.lines[k].slots[st]) r++;
+  return r;
 }
 
 /**
- * Ressources humaines : forment un ouvrier quand une machine manque d'opérateur qualifié
- * (un technicien par chaîne robotisée), si la trésorerie le permet. Elles n'embauchent pas.
+ * Ressources humaines : forment et promeuvent d'abord les ouvriers dont la machine exige un
+ * niveau supérieur, puis forment celui qui freine le plus sa chaîne. Elles n'embauchent pas.
  */
 function hrDecisions(s: GameState): void {
-  for (let ci = 0; ci < s.chains.length; ci++) {
-    const c = s.chains[ci];
-    const ws = s.workers.filter((w) => w.chain === ci);
-    const lv = (w: Worker) => (w.state === 'train' ? w.trainTo : w.level);
-    const reqs: number[] = [];
-    if (s.act >= 3 && c.stations.some((st) => st.tier === ROBOT_TIER)) reqs.push(4);
-    reqs.push(3, 2);
-    for (const req of reqs) {
-      if (req === 3 && s.act < 2) continue;
-      let need = 0;
-      if (req === 4) need = 1;
-      else for (const st of c.stations) if (st.tier < ROBOT_TIER && TIER_OPERATOR_LEVEL[st.tier] >= req) need += st.units.length;
-      if (ws.filter((w) => lv(w) >= req).length >= need) continue;
-      const pool = ws.filter((w) => w.state !== 'train' && w.level === req - 1);
-      if (!pool.length) continue;
-      const cost = trainCost(s, req);
-      if (s.money < cost * 2) continue;
-      const w = pool.find((x) => x.state === 'idle') ?? pool[pool.length - 1];
-      s.money -= cost;
-      releaseWorker(s, w);
-      w.state = 'train';
-      w.timer = trainTime(s, req);
-      w.trainTo = req;
-      w.home = -1;
-      emit(s, { type: 'hrTrain', worker: w.id, level: req });
-      break;
+  for (let fi = 0; fi < s.factories.length; fi++) {
+    const f = s.factories[fi];
+    const ws = s.workers.filter((w) => w.factory === fi && w.state !== 'train');
+    // 1. Qualification requise par la machine du poste
+    let done = false;
+    for (const w of ws) {
+      if (w.kind !== 'post') continue;
+      const m = f.lines[w.line]?.slots[w.station];
+      if (!m || m.tier >= ROBOT_TIER || w.level >= TIER_OPERATOR_LEVEL[m.tier]) continue;
+      if (canPromote(w)) {
+        startCourse(s, w, 'promote');
+        emit(s, { type: 'hrTrain', worker: w.id, promote: true });
+        done = true;
+        break;
+      }
+      if (canTrain(w)) {
+        startCourse(s, w, 'train');
+        emit(s, { type: 'hrTrain', worker: w.id, promote: false });
+        done = true;
+        break;
+      }
+    }
+    if (done) continue;
+    // 1 bis. Préparer les ouvriers des machines que l'ingénieur méthodes va moderniser
+    if (s.roles.methods && s.methods.active) {
+      for (const w of ws) {
+        if (w.kind !== 'post') continue;
+        const m = f.lines[w.line]?.slots[w.station];
+        if (!m || m.tier >= (s.methods.targets[w.station] ?? 0) || m.tier + 1 >= ROBOT_TIER) continue;
+        if (w.level >= TIER_OPERATOR_LEVEL[m.tier + 1]) continue;
+        if (canPromote(w) && s.money >= promotionCost(s, w) * 2) {
+          startCourse(s, w, 'promote');
+          emit(s, { type: 'hrTrain', worker: w.id, promote: true });
+          done = true;
+          break;
+        }
+        if (canTrain(w) && s.money >= trainingCost(s, w) * 3) {
+          startCourse(s, w, 'train');
+          emit(s, { type: 'hrTrain', worker: w.id, promote: false });
+          done = true;
+          break;
+        }
+      }
+      if (done) continue;
+    }
+    // 2. Technicien pour une usine robotisée
+    if (s.act >= 3 && f.lines.some((l) => l.slots.some((m) => m && m.tier === ROBOT_TIER)) && !s.workers.some((w) => w.factory === fi && (w.level >= 4 || (w.state === 'train' && w.level === 3 && w.course === 'promote')))) {
+      const cand = ws.filter((w) => w.kind !== 'crank').sort((a, b) => b.level * 10 + b.trainings - (a.level * 10 + a.trainings))[0];
+      if (cand) {
+        if (canPromote(cand) && s.money >= promotionCost(s, cand) * 1.5) {
+          startCourse(s, cand, 'promote');
+          emit(s, { type: 'hrTrain', worker: cand.id, promote: true });
+          continue;
+        }
+        if (canTrain(cand) && s.money >= trainingCost(s, cand) * 2) {
+          startCourse(s, cand, 'train');
+          emit(s, { type: 'hrTrain', worker: cand.id, promote: false });
+          continue;
+        }
+      }
+    }
+    // 3. L'ouvrier qui freine le plus sa chaîne
+    let worst: Worker | null = null;
+    let wr = Infinity;
+    for (const w of ws) {
+      if (w.kind !== 'post' || !canTrain(w)) continue;
+      const m = f.lines[w.line]?.slots[w.station];
+      if (!m || m.tier >= ROBOT_TIER) continue;
+      const r = workerSpeed(s, w) / machineCycle(s, f.material, m.tier, w.station);
+      if (r < wr) {
+        wr = r;
+        worst = w;
+      }
+    }
+    if (worst && s.money >= trainingCost(s, worst) * 3) {
+      startCourse(s, worst, 'train');
+      emit(s, { type: 'hrTrain', worker: worst.id, promote: false });
     }
   }
+}
+
+/** Ingénieur méthodes : modernise selon la consigne, les postes les plus lents d'abord. */
+function methodsDecisions(s: GameState): void {
+  const share = METHODS.budgets[s.methods.budget] ?? 0.5;
+  let best: { f: Factory; l: number; st: number; cost: number; cap: number } | null = null;
+  for (const f of s.factories) {
+    for (let st = 0; st < 4; st++) {
+      const target = s.methods.targets[st] ?? 0;
+      let cap = 0;
+      for (const l of f.lines) {
+        const m = l.slots[st];
+        if (m) cap += 1 / machineCycle(s, f.material, m.tier, st);
+      }
+      for (let l = 0; l < f.lines.length; l++) {
+        const m = f.lines[l].slots[st];
+        if (!m || m.tier >= target || m.tier + 1 > s.research.tier || m.tier + 1 >= 5) continue;
+        if (m.post >= 0 && m.tier + 1 < ROBOT_TIER) {
+          const w = s.workers.find((x) => x.id === m.post);
+          if (w && w.level < TIER_OPERATOR_LEVEL[m.tier + 1]) continue;
+        }
+        const cost = modernizeCost(m.tier, st, machineRank(f, l, st));
+        if (cost > s.money * share) continue;
+        if (!best || cap < best.cap) best = { f, l, st, cost, cap };
+        break;
+      }
+    }
+  }
+  if (!best) return;
+  const fi = s.factories.indexOf(best.f);
+  modernizeMachine(s, best.f, best.l, best.st, machineRank(best.f, best.l, best.st));
+  emit(s, { type: 'methods', factory: fi, line: best.l, station: best.st, tier: best.f.lines[best.l].slots[best.st]!.tier });
 }
 
 // ------------------------------------------------------- Usure et pannes
@@ -480,45 +781,41 @@ function hrDecisions(s: GameState): void {
 function wearAndBreakdowns(s: GameState, dt: number, red: boolean): number {
   let spent = 0;
   const kwear = (1 - knowHow(s, 'wear')) * (red ? WEAR.redZoneFactor : 1);
-  for (let ci = 0; ci < s.chains.length; ci++) {
-    const c = s.chains[ci];
-    const k = MATERIALS[c.material].k;
-    for (let si = 0; si < 4; si++) {
-      const st = c.stations[si];
-      if (st.tier === 0 && !WEAR.manualWears) continue;
-      const mf = 1 + (k - 1) * [0.5, 1, 1, 0.3][si];
-      for (let ui = 0; ui < st.units.length; ui++) {
-        const u = st.units[ui];
-        if (u.broken || u.service > 0) continue;
-        const load = u.busyT + WEAR.idleFactor * Math.max(0, dt - u.busyT);
-        u.wear = Math.min(1, u.wear + (load / WEAR.fullLoadTime) * mf * kwear);
-        const price = unitPrice(st.tier, si, ui + 1);
-        if (s.research.preventive && u.wear >= WEAR.preventiveAt) {
-          const share = s.research.predictive ? WEAR.predictiveShare : WEAR.preventiveShare;
-          const cost = price * share;
-          s.money -= cost;
-          spent += cost;
-          if (s.research.predictive) u.wear = 0;
-          else {
-            u.service = WEAR.preventiveTime;
-            u.serviceKind = 'service';
-          }
-          emit(s, { type: 'preventive', chain: ci, station: si, unit: ui });
-          continue;
+  for (let fi = 0; fi < s.factories.length; fi++) {
+    const f = s.factories[fi];
+    const k = MATERIALS[f.material].k;
+    for (const { m: u, l, s: st } of machines(f)) {
+      if (u.tier === 0 && !WEAR.manualWears) continue;
+      if (u.broken || u.service > 0) continue;
+      const mf = 1 + (k - 1) * [0.5, 1, 1, 0.3][st];
+      const load = u.busyT + WEAR.idleFactor * Math.max(0, dt - u.busyT);
+      u.wear = Math.min(1, u.wear + (load / WEAR.fullLoadTime) * mf * kwear);
+      const price = unitPrice(u.tier, st, machineRank(f, l, st));
+      if (s.research.preventive && u.wear >= WEAR.preventiveAt) {
+        const share = s.research.predictive ? WEAR.predictiveShare : WEAR.preventiveShare;
+        const cost = price * share;
+        s.money -= cost;
+        spent += cost;
+        if (s.research.predictive) u.wear = 0;
+        else {
+          u.service = WEAR.preventiveTime;
+          u.serviceKind = 'service';
         }
-        if (u.wear > WEAR.breakStart && u.busyT > 0) {
-          const p = Math.pow((u.wear - WEAR.breakStart) / (1 - WEAR.breakStart), 2) * (WEAR.breakPerMin / 60) * dt;
-          if (rand(s) < p) {
-            u.broken = true;
-            s.stats.breakdowns++;
-            emit(s, { type: 'breakdown', chain: ci, station: si, unit: ui });
-            if (s.research.workshop) {
-              const cost = price * WEAR.internalRepairShare;
-              s.money -= cost;
-              spent += cost;
-              u.service = WEAR.internalRepairTime;
-              u.serviceKind = 'repair';
-            }
+        emit(s, { type: 'preventive', factory: fi, line: l, station: st });
+        continue;
+      }
+      if (u.wear > WEAR.breakStart && u.busyT > 0) {
+        const p = Math.pow((u.wear - WEAR.breakStart) / (1 - WEAR.breakStart), 2) * (WEAR.breakPerMin / 60) * dt;
+        if (rand(s) < p) {
+          u.broken = true;
+          s.stats.breakdowns++;
+          emit(s, { type: 'breakdown', factory: fi, line: l, station: st });
+          if (s.research.workshop) {
+            const cost = price * WEAR.internalRepairShare;
+            s.money -= cost;
+            spent += cost;
+            u.service = WEAR.internalRepairTime;
+            u.serviceKind = 'repair';
           }
         }
       }
@@ -527,20 +824,17 @@ function wearAndBreakdowns(s: GameState, dt: number, red: boolean): number {
   return spent;
 }
 
+
 // ---------------------------------------------------------------- Énergie
 
 function energy(s: GameState, dt: number): number {
   const e = s.energy;
   const save = 1 - knowHow(s, 'energy');
   let demand = 0;
-  for (const c of s.chains) {
-    for (const st of c.stations) {
-      if (st.tier === 0) continue;
-      const kw = TIER_KW[st.tier] * save;
-      for (const u of st.units) {
-        if (u.broken || u.service > 0) continue;
-        demand += kw * (u.busyT + ENERGY.idleShare * Math.max(0, dt - u.busyT));
-      }
+  for (const f of s.factories) {
+    for (const { m: u } of machines(f)) {
+      if (u.tier === 0 || u.broken || u.service > 0) continue;
+      demand += TIER_KW[u.tier] * save * (u.busyT + ENERGY.idleShare * Math.max(0, dt - u.busyT));
     }
   }
   const solarKw = e.solar * ENERGY.solar.kw * daylight(s.t);
@@ -624,7 +918,7 @@ function sales(s: GameState, dt: number): { revenue: number; raw: number; base: 
 
 function producible(s: GameState): number[] {
   const set = new Set<number>();
-  for (const c of s.chains) set.add(c.material);
+  for (const f of s.factories) set.add(f.material);
   return [...set];
 }
 
@@ -839,7 +1133,8 @@ function history(s: GameState, dt: number, produced: number, soldBase: number, _
   morale = s.workers.length ? morale / s.workers.length : 0;
   let busy = 0;
   let units = 0;
-  for (const c of s.chains) for (const st of c.stations) if (st.tier > 0) for (const u of st.units) {
+  for (const fa of s.factories) for (const { m: u } of machines(fa)) {
+    if (u.tier === 0) continue;
     units++;
     busy += u.busyT / dt;
   }
@@ -874,12 +1169,5 @@ function history(s: GameState, dt: number, produced: number, soldBase: number, _
     h.acc = new Array(HIST_LEN).fill(0);
     h.accT = 0;
   }
-}
-
-// ------------------------------------------------- Débauchage par Ferrum (test)
-
-/** Utilisé par les tests et l'IA : nombre d'ouvriers d'une chaîne. */
-export function chainWorkers(s: GameState, ci: number): Worker[] {
-  return s.workers.filter((w) => w.chain === ci);
 }
 
