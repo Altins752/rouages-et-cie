@@ -50,10 +50,11 @@ export const SKY_H = 190;
 export const ROOF_H = 34;
 
 /** Étendue du site à cadrer : halls, et à partir de l'acte II annexe, toits et éoliennes. */
-export function siteExtent(n: number, annex: boolean): Bounds {
+export function siteExtent(n: number, annex: boolean, turbines = true): Bounds {
   const b = siteBounds(n);
   if (!annex) return b;
-  return { x: -ANNEX_W - 20, y: -SKY_H, w: b.w + ANNEX_W + 20, h: b.h + SKY_H };
+  const top = turbines ? SKY_H : ROOF_H + 30;
+  return { x: -ANNEX_W - 20, y: -top, w: b.w + ANNEX_W + 20, h: b.h + top };
 }
 
 /** Position de la i-ème éolienne (pied du mât). */

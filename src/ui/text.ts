@@ -4,6 +4,7 @@ import type { KnowHowId, RoleId } from '../data/balance';
 export const STATION_NAMES = ['Découpe', 'Frappe', 'Taraudage', 'Contrôle'];
 export const STATION_ROLE = ['barre → lopin', 'lopin → écrou brut', 'filetage', 'validation ou rebut'];
 export const TIER_NAMES = ['Manuel', 'Mécanique', 'Semi-auto', 'Robotisé', 'Usine noire'];
+export const TIER_SHORT = ['main', 'méca', 'semi', 'robot', 'noire'];
 export const MACHINE_NAMES: string[][] = [
   ['Scie à main', 'Marteau et matrice', 'Taraud à main', 'Calibre'],
   ['Scie à ruban', 'Presse hydraulique', 'Taraudeuse à colonne', 'Banc de mesure'],

@@ -5,7 +5,7 @@ import { stationCapacities } from '../sim/analysis';
 import { specBonus } from '../sim/formulas';
 import { $, esc } from './dom';
 import { fmtP, pct } from './format';
-import { LEVEL_NAMES, MACHINE_NAMES, MATERIAL_NAMES, STATION_NAMES, TIER_NAMES, UNIT_WORD } from './text';
+import { LEVEL_NAMES, MACHINE_NAMES, MATERIAL_NAMES, STATION_NAMES, TIER_NAMES, TIER_SHORT, UNIT_WORD } from './text';
 
 const row = (a: string, b: string) => `<div class="row"><span>${a}</span><span>${b}</span></div>`;
 
@@ -31,7 +31,7 @@ export function tooltipHtml(h: Hover): string {
     return html;
   }
   if (h.station < 0) {
-    const tiers = c.stations.map((st) => TIER_NAMES[st.tier][0]).join(' · ');
+    const tiers = c.stations.map((st) => TIER_SHORT[st.tier]).join(' · ');
     const broken = c.stations.reduce((a, st) => a + st.units.filter((u) => u.broken).length, 0);
     const ws = s.workers.filter((x) => x.chain === h.hall).length;
     return `<b>Chaîne ${h.hall + 1}</b>${row('Matériau', MATERIAL_NAMES[c.material].toLowerCase())}${row('Paliers', tiers)}${row('Ouvriers', String(ws))}${broken ? row('Pannes', `<span style="color:#ff6b5a">${broken}</span>`) : ''}<div style="margin-top:4px;color:#a99f86">Double-clic pour l’afficher</div>`;

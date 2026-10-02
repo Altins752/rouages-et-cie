@@ -214,6 +214,30 @@ function goalText(act: number): string {
   return '';
 }
 
+// ------------------------------------------------------------- Contrôle de gestion
+
+export const REPORT_PERIOD = 180;
+
+/** Rapport périodique du contrôleur de gestion, avec ses alertes. */
+export function controllerReport(s: GameState): Msg {
+  const f = s.flow;
+  const costs = f.raw + f.salaries + Math.max(0, f.energy) + f.maintenance;
+  const net = f.revenue + f.contracts - costs;
+  const lines = [`Recettes ${fmt(f.revenue + f.contracts)} €/s · charges ${fmt(costs)} €/s · bénéfice ${net >= 0 ? '' : '−'}${fmt(Math.abs(net))} €/s.`];
+  const alerts: string[] = [];
+  const broken = s.chains.reduce((a, c) => a + c.stations.reduce((b, st) => b + st.units.filter((u) => u.broken).length, 0), 0);
+  if (broken) alerts.push(`${broken} machine${broken > 1 ? 's' : ''} en panne.`);
+  if (net < 0) alerts.push('Nous perdons de l’argent : chaque seconde coûte.');
+  if (costs > 0 && f.energy / costs > 0.25) alerts.push('L’énergie pèse plus d’un quart des charges : pensez au renouvelable.');
+  const h5 = s.history.h5;
+  if (h5.length && h5[h5.length - 1][16] < 0.5 && s.act >= 2) alerts.push('Le moral moyen est sous 50 % : la cadence baisse.');
+  if (h5.length && h5[h5.length - 1][17] > 0.45) alerts.push('Près de la moitié des machines attendent : du gaspillage d’électricité et d’usure.');
+  if (s.spot.some((c) => c.accepted && c.deadline - s.t < 90 && c.delivered < c.qty)) alerts.push('Un contrat arrive à échéance dans moins de 90 secondes.');
+  if (s.money < 0) alerts.push('Trésorerie négative : le réseau électrique est coupé.');
+  lines.push(alerts.length ? `Alertes :\n– ${alerts.join('\n– ')}` : 'Aucune alerte.');
+  return m('Contrôle de gestion', lines.join('\n'));
+}
+
 // ------------------------------------------------------------- Fin
 
 export function endingMsgs(s: GameState): Msg[] {

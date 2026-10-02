@@ -98,7 +98,8 @@ export function hasAnnex(s: GameState): boolean {
 
 export function viewBounds(s: GameState): { b: Bounds; key: string } {
   const annex = hasAnnex(s);
-  return { b: siteExtent(s.chains.length, annex), key: `${s.chains.length}|${annex ? 1 : 0}|${s.stats.moves}` };
+  const wind = s.energy.wind > 0;
+  return { b: siteExtent(s.chains.length, annex, wind), key: `${s.chains.length}|${annex ? 1 : 0}|${wind ? 1 : 0}|${s.stats.moves}` };
 }
 
 // ------------------------------------------------------------------ Options

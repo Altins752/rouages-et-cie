@@ -56,15 +56,15 @@ Ce fichier sert à reprendre une session interrompue : l'étape en cours est mar
 - [x] Inox, semi-automatique
 - [x] Tests (act2.test.ts), e2e acte II joué par l'IA (énergie, contrats), captures vérifiées, sim, commit
 
-## Étape 5 — Acte III : le pays — EN COURS
+## Étape 5 — Acte III : le pays — FAIT
 
-- [ ] Rôles support (logistique, commercial, contrôleur de gestion)
-- [ ] Onglet Données verrouillé par rôles (graphiques, tableaux)
-- [ ] Robotisation (techniciens), titane, maintenance prédictive
-- [ ] Reconversion ou licenciement des ouvriers remplacés
-- [ ] Sim, tests, e2e, capture, commit
+- [x] Rôles support (logistique : livre les contrats ; commercial : signe les contrats tenables ; contrôleur : rapport périodique avec alertes)
+- [x] Onglet Données verrouillé par rôles : tableaux et graphiques de télémétrie (15 min / 4 h, lecture au survol)
+- [x] Robotisation (un technicien par chaîne, sinon 50 %), titane, maintenance prédictive
+- [x] Reconversion (former un technicien) ou licenciement des ouvriers remplacés, comptés pour la fin
+- [x] Tests (act3.test.ts), e2e acte III joué par l'IA, rendu des robots et de l'usine noire, captures vérifiées, commit
 
-## Étape 6 — Acte IV : le monde et la fin
+## Étape 6 — Acte IV : le monde et la fin — EN COURS
 
 - [ ] Usine noire, carbure, diamant (scintillement)
 - [ ] Objectif 1,5 Md€, rachat de Ferrum, séquence finale (deux variantes)

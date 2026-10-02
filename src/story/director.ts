@@ -3,7 +3,7 @@
  * Pur (aucun DOM) : utilisable par le jeu et par le simulateur.
  */
 import type { GameState, SimEvent } from '../sim/types';
-import { BEATS, MILESTONES, eventMsgs } from './script';
+import { BEATS, MILESTONES, REPORT_PERIOD, controllerReport, eventMsgs } from './script';
 import type { Msg } from './script';
 
 export interface StoryOut {
@@ -20,6 +20,14 @@ export function storyTick(s: GameState, events: SimEvent[] = []): StoryOut {
     if (!b.when(s)) continue;
     s.story.seen[b.id] = s.t;
     out.msgs.push(...b.msgs(s));
+  }
+  if (s.roles.controller) {
+    const last = s.story.flags.report ?? -1;
+    if (last < 0) s.story.flags.report = s.t;
+    else if (s.t - last >= REPORT_PERIOD) {
+      s.story.flags.report = s.t;
+      out.msgs.push(controllerReport(s));
+    }
   }
   for (const ms of MILESTONES) {
     if (s.milestones[ms.id] || ms.act !== s.act) continue;
