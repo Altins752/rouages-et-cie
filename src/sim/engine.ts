@@ -22,8 +22,10 @@ export interface StepInput {
 }
 
 const FX_MAX = 600;
+/** Les événements purement visuels sont abandonnés si personne ne les lit ; les autres jamais. */
 export function emit(s: GameState, e: SimEvent): void {
-  if (s.fx.length < FX_MAX) s.fx.push(e);
+  if (s.fx.length >= FX_MAX && (e.type === 'piece' || e.type === 'sale' || e.type === 'scrap')) return;
+  s.fx.push(e);
 }
 
 /** Indices des échantillons d'historique. */

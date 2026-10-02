@@ -11,6 +11,7 @@ import { createGame } from './sim/state';
 import { silenceStory } from './story/director';
 import { invalidatePanel, renderPanel } from './ui/panel';
 import { telexClose } from './ui/telex';
+import { closeOverlay } from './ui/overlay';
 
 interface Hooks {
   begin: () => void;
@@ -27,7 +28,7 @@ export function installDebug(h: Hooks): void {
     /** Démarre une partie neuve sans passer par l'écran titre. */
     start(seed = 7) {
       G.s = createGame(seed);
-      document.getElementById('overlay')!.hidden = true;
+      closeOverlay();
       h.begin();
     },
     /** Avance la simulation de `seconds` (sans IA). */
@@ -57,7 +58,7 @@ export function installDebug(h: Hooks): void {
       silenceStory(s);
       G.s = s;
       G.chain = 0;
-      document.getElementById('overlay')!.hidden = true;
+      closeOverlay();
       telexClose();
       h.begin();
       return { act: s.act, chains: s.chains.length, money: s.money };

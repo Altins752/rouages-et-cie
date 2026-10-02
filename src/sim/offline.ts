@@ -1,7 +1,10 @@
 /** Progression hors ligne : le temps passe à vitesse ×1, sans clic ni achat. */
 import { OFFLINE_CAP } from '../data/balance';
 import { step } from './engine';
-import type { GameState } from './types';
+import type { GameState, SimEvent } from './types';
+
+/** Événements à garder pour l'histoire et les messages (les autres sont visuels). */
+const important = (e: SimEvent): boolean => e.type !== 'piece' && e.type !== 'sale' && e.type !== 'scrap';
 
 export interface OfflineReport {
   seconds: number;
@@ -23,10 +26,10 @@ export function catchUp(s: GameState, seconds: number, maxSteps = 20000): Offlin
     while (left > 1e-6) {
       const d = Math.min(dt, left);
       step(s, d, { red: false });
-      if (s.fx.length > 200) s.fx.length = 0;
+      if (s.fx.length > 200) s.fx = s.fx.filter(important);
       left -= d;
     }
   }
-  s.fx.length = 0;
+  s.fx = s.fx.filter(important);
   return { seconds: t, produced: s.stats.produced - p0, sold: s.stats.sold - v0, money: s.money - m0, breakdowns: s.stats.breakdowns - b0 };
 }

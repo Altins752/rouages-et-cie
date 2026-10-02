@@ -23,17 +23,19 @@ Ce fichier sert à reprendre une session interrompue : l'étape en cours est mar
 - [x] Mise en page PC jouable (scène, pupitre, panneau, onglets), tests de fumée, captures 1440 × 900 et 1280 × 720
 - [x] Commit
 
-## Étape 2 — Prologue complet — EN COURS
+## Étape 2 — Prologue complet — FAIT
 
-- [ ] Rendu de l'atelier (repris du POC, adapté PC) : établis, ouvriers, piles, caisse, lampes, verrières
-- [ ] Compte-tours (clic maintenu, barre d'espace, zone rouge, vignettage)
-- [ ] Télex (file, frappe, Échap), toasts, dette et échéance (+10 %, +10 min)
-- [ ] Onglets Atelier / Équipe / Marché, raccourcis 1–5, aide (H), info-bulles au survol
-- [ ] Écran titre, sauvegarde versionnée v1, thèmes clair et sombre
-- [ ] Audio synthétisé (sons de base)
-- [ ] Équilibrage du prologue (5–10 min réelles en actif), tests, e2e, capture, commit
+- [x] Rendu de l'atelier (repris du POC, adapté PC) : établis, ouvriers, piles, caisse, lampes, verrières, jour et nuit
+- [x] Compte-tours (clic maintenu, barre d'espace, zone rouge, vignettage rouge, distorsion WebGL)
+- [x] Télex (file, frappe, Entrée/Échap), toasts, dette et échéance (+10 %, +10 min), jalons récompensés
+- [x] Onglets Atelier / Équipe / R&D / Marché / Données, raccourcis 1–5, aide (H), info-bulles au survol
+- [x] Écran titre, menu pause, sauvegarde versionnée v1 (migrations, champs par défaut), thèmes clair et sombre
+- [x] Audio synthétisé (compresseur, réverbération, sons de poste, ronron d'usine)
+- [x] Équilibrage du prologue : 7,1 min réelles en actif (critère 5–10 min), premier achat à 16 s
+- [x] Tests : histoire (paliers, jalons, échéance), sauvegarde (aller-retour, migrations), hors ligne ; e2e (zone rouge, info-bulle, passage à l'acte I) ; captures vérifiées
+- [x] Commit
 
-## Étape 3 — Acte I : la ville
+## Étape 3 — Acte I : la ville — EN COURS
 
 - [ ] Bureau d'études (R&D) : machines mécaniques, acier doux, laiton
 - [ ] Moderniser un poste, opérateurs à former (qualification), revente 25 %

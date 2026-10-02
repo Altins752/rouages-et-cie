@@ -16,7 +16,7 @@ uniform sampler2D uScene,uBloom;uniform vec2 uRes;uniform float uTime,uNight,uBl
 float hash(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}
 void main(){
  vec2 uv=v;
- if(uRed>0.){uv+=vec2(sin(uv.y*170.+uTime*9.)*.0012,cos(uv.x*120.+uTime*7.)*.001)*uRed;}
+ if(uRed>0.){uv+=vec2(sin(uv.y*170.+uTime*9.)*.0005,cos(uv.x*120.+uTime*7.)*.0004)*uRed;}
  vec2 c=uv-.5;float e=dot(c,c);float ca=.006*e*(1.+uRed*2.);
  vec3 col=vec3(texture2D(uScene,uv+c*ca).r,texture2D(uScene,uv).g,texture2D(uScene,uv-c*ca).b);
  col+=texture2D(uBloom,uv).rgb*uBloomK;
