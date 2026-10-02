@@ -1,0 +1,24 @@
+{
+  "name": "rouages-et-cie",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Rouages & Cie — jeu incrémental industriel pour navigateur PC",
+  "scripts": {
+    "dev": "node ./node_modules/vite/bin/vite.js",
+    "build": "node ./node_modules/typescript/bin/tsc --noEmit && node ./node_modules/vite/bin/vite.js build && node tools/inline.mjs",
+    "preview": "node ./node_modules/vite/bin/vite.js preview",
+    "test": "node ./node_modules/vitest/vitest.mjs run",
+    "e2e": "node ./node_modules/@playwright/test/cli.js test",
+    "sim": "node --import tsx tools/sim/campaign.ts",
+    "typecheck": "node ./node_modules/typescript/bin/tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.6.4",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.2",
+    "vitest": "^5.0.3"
+  }
+}
