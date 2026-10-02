@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
 const shot = (page: Page, name: string) =>
-  page.screenshot({ path: `e2e/screens/${test.info().project.name}-${name}.png` });
+  page.screenshot({ path: `e2e/screens/${test.info().project.name}-${name}.jpg`, type: 'jpeg', quality: 80 });
 
 async function start(page: Page): Promise<void> {
   await page.goto('/');

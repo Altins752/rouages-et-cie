@@ -88,6 +88,7 @@ export function showHelp(onClose: () => void): void {
       <tr><td>Entrée / Échap</td><td>Passer / fermer le télex</td></tr>
       <tr><td>H</td><td>Cette aide</td></tr>
       <tr><td>Tab, flèches</td><td>Naviguer au clavier dans le panneau</td></tr>
+      <tr><td>Entrée</td><td>Activer le bouton sélectionné (la barre d’espace est réservée au temps)</td></tr>
     </table>
     <div class="menu"><button class="buy" type="button" id="ovClose" data-autofocus><span class="c">Reprendre</span><small>Échap</small></button></div>`,
     onClose,

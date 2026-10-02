@@ -2,7 +2,7 @@ import { KNOW_HOW, MATERIALS, MORALE, PROLOGUE, ROLES, STATION_COUNT, DOOR_POS }
 import type { KnowHowId, RoleId } from '../data/balance';
 import type { Chain, GameState, Station, Unit, Worker } from './types';
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 export const WORKER_NAMES = [
   'Marcel', 'Josette', 'Ahmed', 'Lucie', 'Paulo', 'Inès', 'Gégé', 'Nadia', 'Yvon', 'Sonia', 'Kévin', 'Odile',
@@ -60,6 +60,7 @@ export function newWorker(s: GameState, chain: number, name?: string): Worker {
     last: -1,
     home: -1,
     displaced: false,
+    rest: 0,
   };
 }
 

@@ -3,7 +3,8 @@
  * rentabilisée (comme le simulateur Python d'origine), en jouant sur le vrai moteur.
  */
 import {
-  ACTS, CONTRACTS, ENERGY, KNOW_HOW, MATERIALS, RESEARCH_EXTRA, ROBOT_TIER, ROLES, TIER_OPERATOR_LEVEL, TIER_RESEARCH,
+  ACTS, CONTRACTS, ENERGY, KNOW_HOW, MATERIALS, MAX_WORKERS_PER_CHAIN, RESEARCH_EXTRA, ROBOT_TIER, ROLES, TIER_OPERATOR_LEVEL,
+  TIER_RESEARCH,
 } from '../data/balance';
 import * as A from './actions';
 import { bestCandidate, firstStepCost } from './advisor';
@@ -57,6 +58,14 @@ function staffing(ai: AiState, s: GameState): void {
     if (ws.length < humanStations) {
       run(ai, s, 'hire', A.hire(s, ci));
       return;
+    }
+    // Relève : quand le moral baisse, quelques ouvriers de plus que de machines.
+    if (s.act >= 2 && humanUnits > 0 && ws.length < Math.min(MAX_WORKERS_PER_CHAIN, Math.ceil(humanUnits * 1.25) + 1)) {
+      const mor = ws.reduce((a, w) => a + w.morale, 0) / Math.max(1, ws.length);
+      if (mor < 0.6) {
+        run(ai, s, 'hire relief', A.hire(s, ci));
+        return;
+      }
     }
     for (const req of [4, 3, 2]) {
       let need = 0;

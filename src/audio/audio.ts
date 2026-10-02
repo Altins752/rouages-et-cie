@@ -315,16 +315,111 @@ export function workSound(station: number, tier: number, pan: number): void {
   else tone('sine', 1760, t, 0.002, 0.04, 0.1, o);
 }
 
-/** Ambiance continue : le ronron suit l'activité et la vitesse du temps. */
-export function ambience(activity: number, speed: number, workers: number): void {
+export interface AmbienceIn {
+  /** Activité de l'usine 0–1. */
+  activity: number;
+  speed: number;
+  workers: number;
+  /** Éoliennes installées, vent 0–1. */
+  turbines: number;
+  wind: number;
+  /** Unités robotisées et de l'usine noire. */
+  robots: number;
+  black: number;
+  /** Panoramique moyen des éoliennes (−1 gauche, 1 droite). */
+  windPan: number;
+}
+
+interface Layers {
+  wind: GainNode;
+  windF: BiquadFilterNode;
+  windP: StereoPannerNode | null;
+  servo: GainNode;
+  servoO: OscillatorNode;
+  black: GainNode;
+}
+let L: Layers | null = null;
+
+function buildLayers(): Layers {
+  const c = AU.c!;
+  const src = () => {
+    const s = c.createBufferSource();
+    s.buffer = AU.nb;
+    s.loop = true;
+    s.start(0, Math.random() * 1.5);
+    return s;
+  };
+  // vent dans les pales
+  const windF = c.createBiquadFilter();
+  windF.type = 'bandpass';
+  windF.frequency.value = 480;
+  windF.Q.value = 0.8;
+  const wind = c.createGain();
+  wind.gain.value = 0;
+  const windP = c.createStereoPanner ? c.createStereoPanner() : null;
+  src().connect(windF);
+  windF.connect(wind);
+  if (windP) {
+    wind.connect(windP);
+    windP.connect(AU.amb!);
+  } else wind.connect(AU.amb!);
+  const lfo = c.createOscillator();
+  lfo.frequency.value = 0.13;
+  const lg = c.createGain();
+  lg.gain.value = 260;
+  lfo.connect(lg);
+  lg.connect(windF.frequency);
+  lfo.start();
+  // servomoteurs des robots
+  const servoO = c.createOscillator();
+  servoO.type = 'sawtooth';
+  servoO.frequency.value = 330;
+  const sf = c.createBiquadFilter();
+  sf.type = 'lowpass';
+  sf.frequency.value = 650;
+  sf.Q.value = 2;
+  const servo = c.createGain();
+  servo.gain.value = 0;
+  servoO.connect(sf);
+  sf.connect(servo);
+  servo.connect(AU.amb!);
+  const sl = c.createOscillator();
+  sl.frequency.value = 1.75;
+  const sg = c.createGain();
+  sg.gain.value = 90;
+  sl.connect(sg);
+  sg.connect(servoO.frequency);
+  servoO.start();
+  sl.start();
+  // usine noire : un sifflement aigu, presque rien
+  const bo = c.createOscillator();
+  bo.type = 'sine';
+  bo.frequency.value = 3520;
+  const black = c.createGain();
+  black.gain.value = 0;
+  bo.connect(black);
+  black.connect(AU.amb!);
+  bo.start();
+  return { wind, windF, windP, servo, servoO, black };
+}
+
+/** Ambiance continue : une couche par type de machine, qui suit le site et la vitesse du temps. */
+export function ambience(i: AmbienceIn): void {
   if (!can() || !AU.humG || !AU.hum || !AU.hum2 || !AU.mach || !AU.machF) return;
   const t = now();
-  AU.humG.gain.setTargetAtTime(0.03 + 0.03 * Math.min(1, activity) + 0.02 * (speed - 1), t, 0.2);
-  const f = 44 + 16 * (speed - 1) + Math.min(workers, 30) * 0.3;
+  const act = Math.min(1, i.activity);
+  AU.humG.gain.setTargetAtTime(0.03 + 0.03 * act + 0.02 * (i.speed - 1), t, 0.2);
+  const f = 44 + 16 * (i.speed - 1) + Math.min(i.workers, 30) * 0.3;
   AU.hum.frequency.setTargetAtTime(f, t, 0.2);
   AU.hum2.frequency.setTargetAtTime(f * 1.012, t, 0.2);
-  AU.mach.gain.setTargetAtTime(0.012 * Math.min(1, activity) * (0.6 + 0.4 * speed), t, 0.3);
-  AU.machF.frequency.setTargetAtTime(700 + 300 * speed, t, 0.3);
+  AU.mach.gain.setTargetAtTime(0.012 * act * (0.6 + 0.4 * i.speed), t, 0.3);
+  AU.machF.frequency.setTargetAtTime(700 + 300 * i.speed, t, 0.3);
+  if (!L) L = buildLayers();
+  L.wind.gain.setTargetAtTime(i.turbines ? Math.min(0.06, 0.012 * Math.sqrt(i.turbines)) * (0.5 + 0.5 * i.wind) : 0, t, 0.4);
+  if (L.windP) L.windP.pan.setTargetAtTime(Math.max(-1, Math.min(1, i.windPan)), t, 0.3);
+  L.servo.gain.setTargetAtTime(i.robots ? Math.min(0.02, 0.003 * Math.sqrt(i.robots)) * act : 0, t, 0.3);
+  L.servoO.detune.setTargetAtTime((i.speed - 1) * 200, t, 0.3);
+  L.black.gain.setTargetAtTime(i.black ? Math.min(0.006, 0.0012 * Math.sqrt(i.black)) : 0, t, 0.5);
 }
 
 export function suspendAudio(hidden: boolean): void {

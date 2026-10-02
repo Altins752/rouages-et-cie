@@ -62,6 +62,8 @@ export interface Worker {
   home: number;
   /** Ouvrier sans poste depuis la robotisation. */
   displaced: boolean;
+  /** Pause en cours (relève), en secondes. */
+  rest: number;
 }
 
 export interface SpotContract {
@@ -75,6 +77,8 @@ export interface SpotContract {
   deadline: number;
   duration: number;
   accepted: boolean;
+  /** Pièces déjà comptées dans la part de marché (au fil de la mise de côté). */
+  counted: number;
 }
 
 export interface LongContract {

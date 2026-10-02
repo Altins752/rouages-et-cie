@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ACTS, CONTRACTS, ENERGY, MORALE, WEAR } from '../data/balance';
+import { ACTS, CONTRACTS, ENERGY, WEAR } from '../data/balance';
 import * as A from './actions';
 import { advance, step } from './engine';
 import { daylight } from './env';
@@ -18,18 +18,27 @@ function act2(seed = 5): GameState {
 }
 
 describe('acte II : moral', () => {
-  it('l’ouvrier du goulot s’épuise, les autres récupèrent', () => {
-    const s = act2();
-    for (let i = 0; i < 5; i++) A.hire(s, 0);
-    // découpe triplée : la frappe (seule, 3 s) est le goulot
-    A.addUnit(s, 0, 0);
-    A.addUnit(s, 0, 0);
-    advance(s, 1800, { red: false }, 0.25);
-    const busy = s.workers.filter((w) => w.load > MORALE.highLoad);
-    const rested = s.workers.filter((w) => w.load < MORALE.lowLoad);
-    expect(busy.length).toBeGreaterThan(0);
-    expect(Math.min(...busy.map((w) => w.morale))).toBeLessThan(MORALE.start - 0.1);
-    if (rested.length) expect(Math.max(...rested.map((w) => w.morale))).toBeGreaterThan(0.8);
+  it('sans relève, l’ouvrier du goulot s’épuise ; avec relève, le moral tient', () => {
+    // Frappe mécanique : un seul opérateur qualifié, les autres sont manœuvres.
+    const run = (relief: boolean) => {
+      const s = act2();
+      A.hireRole(s, 'foreman');
+      A.modernize(s, 0, 1);
+      A.addUnit(s, 0, 0);
+      A.addUnit(s, 0, 2);
+      for (let i = 0; i < 5; i++) A.hire(s, 0);
+      s.workers[1].level = 2;
+      if (relief) {
+        A.hire(s, 0);
+        s.workers[6].level = 2;
+      }
+      advance(s, 2400, { red: false }, 0.25);
+      return Math.min(...s.workers.map((w) => w.morale));
+    };
+    const alone = run(false);
+    const relieved = run(true);
+    expect(alone).toBeLessThan(0.45);
+    expect(relieved).toBeGreaterThan(alone + 0.15);
   });
 
   it('la cantine relève le plafond du moral', () => {
@@ -111,7 +120,7 @@ describe('acte II : contrats et Ferrum', () => {
   it('un contrat manqué coûte de la réputation', () => {
     const s = act2();
     s.reputation = 10;
-    s.spot.push({ id: 999, material: 3, qty: 1000, delivered: 0, price: 60, deadline: 0, duration: 10, accepted: false });
+    s.spot.push({ id: 999, material: 3, qty: 1000, delivered: 0, price: 60, deadline: 0, duration: 10, accepted: false, counted: 0 });
     A.acceptSpot(s, 999);
     advance(s, 11, { red: false }, 0.25);
     expect(s.reputation).toBe(10 + CONTRACTS.repSpotFail);

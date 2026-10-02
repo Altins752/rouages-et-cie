@@ -118,7 +118,7 @@ export const BEATS: Beat[] = [
   {
     id: 'morale',
     when: (s) => s.act >= 2 && s.workers.some((w) => w.morale < 0.55),
-    msgs: () => [m(MARCEL, 'Les gars du goulot sont rincés. Toujours en train de courir, jamais une pause.\nUn ouvrier épuisé travaille moins vite. Une cantine, ou quelqu’un de plus au poste qui coince, et ça repart.')],
+    msgs: () => [m(MARCEL, 'Les gars du goulot sont rincés. Toujours en train de courir, jamais une pause.\nUn ouvrier épuisé travaille moins vite. Embauchez quelques gars de plus que de machines : ils prendront le relais et chacun soufflera. Une cantine aide aussi.')],
   },
   {
     id: 'energy',

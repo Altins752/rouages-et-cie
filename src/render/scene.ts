@@ -555,6 +555,11 @@ function drawUnit(c: Chain, ci: number, s: number, i: number): void {
       ctx.fillRect(x + 21, y + 10, 18, 4);
     }
   }
+  // outillage : une encoche jaune par niveau, visible en permanence
+  for (let k = 0; k < st.tool; k++) {
+    ctx.fillStyle = '#f2b705';
+    ctx.fillRect(x - 19 + k * 5, y + 29, 3.5, 2.5);
+  }
   // pièce en cours
   if (busy && t < 4) {
     const m = c.material;
@@ -946,6 +951,88 @@ function drawSky(cw: number, ch: number): void {
   }
 }
 
+// ------------------------------------------------------------------ Lointain
+
+const hash = (i: number) => {
+  const x = Math.sin(i * 127.1 + 311.7) * 43758.5453;
+  return x - Math.floor(x);
+};
+
+/** Silhouettes à l'horizon : elles changent avec le marché conquis (parallaxe légère). */
+function drawBackdrop(cw: number, hy: number, cam: Camera): void {
+  const act = Math.min(S.act, 4);
+  if (act < 2) return;
+  const amb = ambient(S.t);
+  const z = Math.min(1.6, cam.zoom);
+  const par = -cam.x * cam.zoom * 0.15;
+  const far = mix([18, 22, 34], [150, 172, 190], amb);
+  const near = mix([14, 18, 26], [118, 136, 150], amb);
+  // collines
+  ctx.fillStyle = far;
+  ctx.beginPath();
+  ctx.moveTo(0, hy);
+  for (let x = 0; x <= cw + 20; x += 20) {
+    const w = (x - par * 0.5) / (180 * z);
+    ctx.lineTo(x, hy - (22 + 18 * Math.sin(w) + 10 * Math.sin(w * 2.3 + 1)) * z);
+  }
+  ctx.lineTo(cw, hy);
+  ctx.fill();
+  const unit = 26 * z;
+  const start = Math.floor(-par / unit) - 2;
+  const count = Math.ceil(cw / unit) + 4;
+  if (act === 2) {
+    // arbres
+    ctx.fillStyle = near;
+    for (let k = 0; k < count; k++) {
+      const i = start + k;
+      if (hash(i) < 0.45) continue;
+      const x = i * unit + par;
+      const h = (10 + 14 * hash(i + 7)) * z;
+      ctx.beginPath();
+      ctx.arc(x, hy - h, h * 0.55, 0, TAU);
+      ctx.fill();
+      ctx.fillRect(x - 1.5 * z, hy - h, 3 * z, h);
+    }
+  } else {
+    // ville (acte III) ou mégapole (acte IV)
+    ctx.fillStyle = near;
+    const maxH = act === 3 ? 46 : 120;
+    for (let k = 0; k < count; k++) {
+      const i = start + k;
+      if (hash(i) < (act === 3 ? 0.5 : 0.2)) continue;
+      const x = i * unit + par;
+      const h = (12 + maxH * Math.pow(hash(i + 3), act === 3 ? 1.6 : 2.2)) * z;
+      const w = unit * (0.6 + 0.35 * hash(i + 11));
+      ctx.fillRect(x, hy - h, w, h);
+      if (amb < 0.5) {
+        ctx.fillStyle = `rgba(255,214,140,${0.5 * (1 - amb * 2)})`;
+        for (let r = 0; r < h / (7 * z) - 1; r++) if (hash(i * 31 + r) > 0.6) ctx.fillRect(x + w * 0.3, hy - h + 4 * z + r * 7 * z, 2 * z, 2 * z);
+        ctx.fillStyle = near;
+      }
+      if (act === 4 && hash(i + 19) > 0.93) {
+        // grue
+        ctx.fillRect(x + w / 2, hy - h - 30 * z, 2 * z, 30 * z);
+        ctx.fillRect(x + w / 2 - 20 * z, hy - h - 30 * z, 40 * z, 2 * z);
+      }
+    }
+    if (act === 3) {
+      // pylônes
+      ctx.strokeStyle = near;
+      ctx.lineWidth = 1;
+      for (let k = 0; k < count; k += 5) {
+        const x = (start + k) * unit + par;
+        ctx.beginPath();
+        ctx.moveTo(x - 6 * z, hy);
+        ctx.lineTo(x, hy - 40 * z);
+        ctx.lineTo(x + 6 * z, hy);
+        ctx.moveTo(x - 8 * z, hy - 32 * z);
+        ctx.lineTo(x + 8 * z, hy - 32 * z);
+        ctx.stroke();
+      }
+    }
+  }
+}
+
 // ------------------------------------------------------------------ Annexe : énergie, cantine
 
 const ROOF_SLOTS = 12;
@@ -1152,6 +1239,8 @@ export function drawScene(t: DrawTarget, s: GameState, cam: Camera, o: SceneOpts
   };
   const split = solarSplit();
   if (outdoor) {
+    const top = annex ? -ROOF_H - 18 : -60;
+    drawBackdrop(cw, ch / 2 + (top - cam.y) * cam.zoom, cam);
     base(0, 0);
     drawGround(annex ? -ROOF_H - 18 : -60);
   }

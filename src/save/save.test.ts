@@ -55,6 +55,15 @@ describe('sauvegarde versionnée', () => {
     }
   });
 
+  it('v1 → v2 : les contrats en cours gardent leurs pièces déjà comptées', () => {
+    const s = createGame(3);
+    const raw = JSON.parse(serialize(s, 0));
+    raw.version = 1;
+    raw.state.spot = [{ id: 1, material: 0, qty: 50, delivered: 12, price: 3, deadline: 100, duration: 120, accepted: true }];
+    const f = deserialize(JSON.stringify(raw))!;
+    expect(f.state.spot[0].counted).toBe(12);
+  });
+
   it('refuse une sauvegarde illisible ou d’une version future', () => {
     expect(deserialize('pas du json')).toBeNull();
     expect(deserialize(JSON.stringify({ version: SAVE_VERSION + 1, state: {} }))).toBeNull();

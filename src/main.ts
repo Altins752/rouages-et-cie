@@ -11,6 +11,7 @@ import { PostFx } from './render/postfx';
 import { hallOrigin } from './render/layout';
 import * as A from './sim/actions';
 import { step } from './sim/engine';
+import { windFactor } from './sim/env';
 import { catchUp } from './sim/offline';
 import { createGame } from './sim/state';
 import type { GameState, SimEvent } from './sim/types';
@@ -475,6 +476,36 @@ $('btnMenu').addEventListener('click', () => {
   });
 });
 
+// ------------------------------------------------------------------ Ambiance sonore
+
+let ambT = 0;
+function ambientTick(view: GameState): void {
+  const now = performance.now();
+  if (now - ambT < 150) return;
+  ambT = now;
+  let busy = 0;
+  let units = 0;
+  let robots = 0;
+  let black = 0;
+  for (const c of view.chains) for (const st of c.stations) for (const u of st.units) {
+    units++;
+    if (u.busy) busy++;
+    if (st.tier === 3) robots++;
+    if (st.tier === 4) black++;
+  }
+  const lit = G.finale ? 0 : 1;
+  ambience({
+    activity: lit * (units ? Math.min(1, busy / units + 0.15) : 0),
+    speed: G.speed,
+    workers: view.workers.length,
+    turbines: view.energy.wind,
+    wind: windFactor(view.t),
+    robots: robots * lit,
+    black: black * lit,
+    windPan: 0,
+  });
+}
+
 // ------------------------------------------------------------------ Boucle
 
 let last = performance.now();
@@ -542,7 +573,7 @@ function tick(now: number): void {
   }, rdt);
   post.render(useGl, cv, glowCv, now / 1000, view, inRed());
   updateGauge();
-  ambience(Math.min(1, s.workers.length / 8 + s.chains.length * 0.1), G.speed, s.workers.length);
+  ambientTick(view);
   $('hint').classList.toggle('show', G.started && !G.paused && s.act === 0 && s.t < 120 && G.lastInput === 0 && !telexOpen());
   uiT += rdt;
   if (uiT > 0.2) {
@@ -561,7 +592,10 @@ initPanel();
 $('hint').textContent = 'Maintenez le clic sur l’atelier (ou la barre d’espace) pour accélérer le temps';
 updateConsole();
 renderPanel();
-installDebug({ begin, cam, getCanvas: () => cv, absence, startFinale });
+// Accès de test : en développement, sous navigateur piloté (Playwright) ou avec ?debug.
+if (import.meta.env.DEV || navigator.webdriver || location.search.includes('debug')) {
+  installDebug({ begin, cam, getCanvas: () => cv, absence, startFinale });
+}
 title();
 void hasSave;
 requestAnimationFrame(frame);

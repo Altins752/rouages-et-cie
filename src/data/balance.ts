@@ -53,7 +53,7 @@ export const ROBOT_TIER = 3;
 export const BLACK_TIER = 4;
 export const ROBOT_NO_TECH_FACTOR = 0.5;
 /** Recherche des paliers (€). */
-export const TIER_RESEARCH = [0, 300, 25000, 500000, 150_000_000];
+export const TIER_RESEARCH = [0, 300, 80000, 1_200_000, 200_000_000];
 /** Acte minimal pour rechercher chaque palier. */
 export const TIER_MIN_ACT = [0, 1, 2, 3, 4];
 /** Recherches de confort du bureau d'études. */
@@ -88,11 +88,11 @@ export interface MaterialDef {
 export const MATERIALS: readonly MaterialDef[] = [
   { id: 'fonte', price: 3, raw: 0.6, k: 1.0, minTier: 0, research: 0, act: 0 },
   { id: 'acier', price: 7, raw: 1.8, k: 1.3, minTier: 0, research: 500, act: 1 },
-  { id: 'laiton', price: 18, raw: 5, k: 1.1, minTier: 1, research: 25000, act: 1 },
-  { id: 'inox', price: 50, raw: 16, k: 1.7, minTier: 1, research: 30000, act: 2 },
-  { id: 'titane', price: 160, raw: 55, k: 2.4, minTier: 2, research: 400000, act: 3 },
+  { id: 'laiton', price: 18, raw: 5, k: 1.1, minTier: 1, research: 30000, act: 1 },
+  { id: 'inox', price: 50, raw: 16, k: 1.7, minTier: 1, research: 60000, act: 2 },
+  { id: 'titane', price: 160, raw: 55, k: 2.4, minTier: 2, research: 800000, act: 3 },
   { id: 'carbure', price: 600, raw: 220, k: 3.2, minTier: 3, research: 8_000_000, act: 4 },
-  { id: 'diamant', price: 3000, raw: 1200, k: 4.5, minTier: 4, research: 600_000_000, act: 4 },
+  { id: 'diamant', price: 3000, raw: 1200, k: 4.5, minTier: 4, research: 800_000_000, act: 4 },
 ];
 
 /** Part du facteur matériau appliquée à chaque poste. */
@@ -125,6 +125,10 @@ export const MORALE = {
   loadTau: 60,
   /** La RH remonte le moral plus vite. */
   hrRecovery: 1.5,
+  /** Relève : un ouvrier surchargé passe la main à un collègue libre et souffle (s). */
+  restTime: 6,
+  /** En dessous de ce moral, un ouvrier surchargé passe la main s'il le peut. */
+  tired: 0.7,
 };
 export const CANTEEN_COST = [0, 0, 6000, 40000, 300000, 4_000_000];
 
@@ -222,8 +226,8 @@ export interface ActDef {
 export const ACTS: readonly ActDef[] = [
   { id: 0, market: 4, maxChains: 1, hall: 0, vmax: 3, goal: { kind: 'debt' } },
   { id: 1, market: 180, maxChains: 2, hall: 400, vmax: 4, goal: { kind: 'share', share: 0.5, hold: 30 } },
-  { id: 2, market: 2200, maxChains: 4, hall: 3000, vmax: 4.5, goal: { kind: 'share', share: 0.5, hold: 30 } },
-  { id: 3, market: 60000, maxChains: 8, hall: 15000, vmax: 5, goal: { kind: 'share', share: 0.5, hold: 30 } },
+  { id: 2, market: 1700, maxChains: 4, hall: 3000, vmax: 4.5, goal: { kind: 'share', share: 0.5, hold: 30 } },
+  { id: 3, market: 27000, maxChains: 8, hall: 15000, vmax: 5, goal: { kind: 'share', share: 0.5, hold: 30 } },
   { id: 4, market: 10_000_000, maxChains: 16, hall: 100000, vmax: 5, goal: { kind: 'cash', amount: 1.5e9 } },
   // Bac à sable : marché sans plafond pratique.
   { id: 5, market: 1e12, maxChains: 16, hall: 100000, vmax: 5, goal: { kind: 'none' } },

@@ -39,7 +39,7 @@ Ce fichier sert à reprendre une session interrompue : l'étape en cours est mar
 
 - [x] Bureau d'études (R&D) : machines mécaniques, acier doux, laiton
 - [x] Moderniser un poste, opérateurs à former (qualification), revente 25 %
-- [x] Contremaître : cadences, goulot, postes attitrés (+11 % sur une ligne de 12)
+- [x] Contremaître : cadences, goulot, postes attitrés (+8,5 % sur une ligne de 12)
 - [x] Marché de la ville (180 €/s après rééquilibrage), objectif 50 % pendant 30 s, Ferrum (débauchage, guerre des prix)
 - [x] Usure et pannes des machines, maintenance externe (jamais refusée, dette possible), révision
 - [x] Deux chaînes max (frais de hall), vue de site à deux halls, jalons secondaires
@@ -71,34 +71,72 @@ Ce fichier sert à reprendre une session interrompue : l'étape en cours est mar
 - [x] Jalons de l'acte IV pour occuper l'attente des recherches (usine noire, diamant)
 - [x] e2e : acte IV joué par l'IA, rachat, séquence finale, écran de fin, passage au bac à sable ; captures vérifiées ; commit
 
-## Étape 7 — Prestige, bac à sable, finitions — EN COURS
+## Étape 7 — Prestige, bac à sable, finitions — FAIT
 
-- [ ] Bac à sable (marché illimité), prestige facultatif « nouveau site », arbre de savoir-faire
-- [ ] Caméra évolutive (atelier → halls → site), niveau de détail
-- [ ] Post-traitement WebGL (bloom, grain, vignette, chaleur), cycle jour/nuit
-- [ ] Audio complet (ambiance par machine)
-- [ ] Progression hors ligne, rapport d'absence, migrations de sauvegarde
-- [ ] `dist/rouages.html` autonome, README, rapport final
-- [ ] Sim finale, tests, e2e, captures, commit
+- [x] Bac à sable (marché sans plafond), prestige facultatif « nouveau site », arbre de savoir-faire (7 branches)
+- [x] Caméra évolutive (atelier → halls → site), intérieur des halls au-delà de 300 px, zoom et déplacement ; lointain qui change à chaque déménagement
+- [x] Post-traitement WebGL (bloom, grain, vignette, aberration, distorsion en zone rouge, teinte de nuit), cycle jour/nuit
+- [x] Audio : ronron, brouhaha des machines, vent des éoliennes, servomoteurs des robots, sifflement de l'usine noire, sons de poste et d'interface
+- [x] Progression hors ligne (8 h max), rapport d'absence, sauvegarde v2 avec migration
+- [x] Outillage visible sur chaque unité ; accès de test réservé au développement et aux navigateurs pilotés
+- [x] Corrections d'équilibre de fond : part de marché des contrats au fil de l'eau, relève des ouvriers fatigués, pas de marche inutile vers un poste déjà servi
+- [x] `dist/rouages.html` autonome (182 Ko), README, captures dans `docs/captures/`, rapport final
+- [x] Sim finale, 61 tests unitaires, 36 tests e2e, commit
 
 ## Durées simulées
 
-Minutes réelles par étape (graine 11). Critères : actif entre 5 et 6 h, prologue actif entre 5 et 10 min, premier achat < 60 s, jamais plus de 3 min sans achat possible, aucun acte bloqué.
+Minutes réelles par étape. Critères : actif entre 5 et 6 h, prologue actif entre 5 et 10 min, premier achat < 60 s, jamais plus de 3 min sans achat possible, aucun acte bloqué.
+
+### Final (graine 11)
+
+| Profil | Prologue | Acte I | Acte II | Acte III | Acte IV | Total | 1er achat | Attente max |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Calme (sans clic) | 11,3 | 40,0 | 61,3 | 123,8 | 417,3 | 10 h 53 | 45 s | 105 s |
+| Actif (zone verte) | 6,9 | 22,5 | 32,4 | 60,8 | 202,9 | 5 h 26 | 16 s | 48 s |
+| Gros cliqueur (zone rouge) | 4,3 | 12,8 | 17,1 | 30,9 | 94,3 | 2 h 39 | 12 s | 24 s |
+
+Autres graines : actif 5 h 24 (23), 5 h 23 (51), 5 h 27 (77) ; calme 10 h 55 (23), 10 h 54 (51) ; zone rouge 2 h 40 (23 et 51). Aucun acte bloqué, fin chaleureuse dans tous les cas (l'IA ne licencie jamais), 13 à 14 points de savoir-faire gagnés sur la campagne.
+
+### Historique
 
 | Passage | Profil | Prologue | Acte I | Acte II | Acte III | Acte IV | Total |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Étape 1 | Calme | 11,5 | 39,5 | 154,0 | 160,3 | 328,5 | 11 h 34 |
 | Étape 1 | Actif | 7,1 | 22,1 | 47,1 | 69,9 | 177,3 | 5 h 24 |
 | Étape 1 | Zone rouge | 4,3 | 12,5 | 23,0 | 45,7 | 82,1 | 2 h 48 |
-
 | Étape 4 | Calme | 11,5 | 39,5 | 98,5 | 202,5 | 347,8 | 11 h 40 |
 | Étape 4 | Actif | 7,1 | 22,1 | 46,5 | 69,3 | 180,9 | 5 h 26 |
 | Étape 4 | Zone rouge | 4,3 | 12,5 | 25,2 | 31,9 | 79,5 | 2 h 33 |
 
-Actif sur d'autres graines (étape 4) : 5 h 18 (graine 23), 5 h 21 (graine 37).
-
-Actif sur d'autres graines (étape 1) : 5 h 15 (graine 37), 5 h 30 (graine 23).
+Aux étapes 1 et 4, l'actif variait de 5 h 15 à 6 h 52 selon la graine : un acte II pouvait s'enliser (moral effondré, objectif tenu seulement grâce aux pics de livraison des contrats). Les corrections de l'étape 7 ont ramené l'écart à quelques minutes.
 
 ## Rapport final
 
-À rédiger en fin de projet.
+### Ce qui est fait
+
+- **Jeu complet sur PC** : écran titre, prologue, actes I à IV, séquence finale à deux variantes, bac à sable avec prestige facultatif. Pupitre (caisse, objectif, compte-tours, voyants), scène de l'usine à gauche, panneau à cinq onglets à droite, télex, info-bulles, aide (H), menu pause. Aucun défilement de page, de 1280 × 720 à 2560 × 1440.
+- **Moteur de simulation** (`src/sim`) porté du POC, déterministe et indépendant de la taille du pas : ouvriers qui marchent et s'affectent seuls, piles plafonnées devant le goulot, quatre leviers, cinq paliers technologiques, sept matériaux, usure et pannes, maintenance (externe, atelier, préventive, prédictive), moral avec relève, spécialisation, cantine, énergie (réseau, solaire, éolien, batterie, revente, coupure), contrats ponctuels et long terme, réputation, Ferrum (débauchage, guerre des prix, contrat exclusif) avec un directeur de crises, six rôles d'encadrement qui débloquent l'information et décident, déménagements, savoir-faire.
+- **Information qui se débloque** : sans rôle, seuls la caisse et le stock ; l'onglet Données se remplit rôle par rôle (tableaux, graphiques avec lecture au survol).
+- **Chaque achat se voit** : établis, machines (cinq dessins), outillage (encoches), halls, éoliennes, panneaux, batteries, cantine, encadrement ; la caméra recule quand l'usine grandit.
+- **Sauvegarde** locale versionnée (v2, migration v1 → v2), progression hors ligne jusqu'à 8 h avec rapport d'absence ; thèmes clair et sombre (système ou forcés) ; `prefers-reduced-motion` respecté ; tout le panneau au clavier.
+- **Outillage** : `npm run sim` (campagne réelle, 3 profils, critères vérifiés), 61 tests unitaires, 36 tests e2e (deux thèmes, deux tailles d'écran, actes joués par l'IA, fin, hors ligne, fichier unique), `dist/rouages.html` autonome.
+
+### Limites connues
+
+- **L'équilibrage repose sur une IA**, pas sur des parties humaines. Elle décide toutes les 8 s avec une information complète ; un vrai joueur actif mettra probablement plus que 5 h 26. Le délai de réflexion du profil est le paramètre à recaler après les premiers essais.
+- **Zone rouge très rentable** : en mitraillant en permanence, l'histoire tient en 2 h 40. L'usure ×5 est vite absorbée par la maintenance préventive. C'est un comportement extrême (dix clics par seconde pendant des heures), mais le coût de la zone rouge pourrait être relevé.
+- **Le son n'a pas été écouté** : les tests tournent sans sortie audio ; le mixage (volumes relatifs, couches d'ambiance) est à vérifier à l'oreille.
+- **Polices** : chargées depuis Google Fonts ; hors ligne, le fichier unique retombe sur les polices du système.
+- **Grands sites** : au-delà de quatre chaînes, la vue d'ensemble montre les bâtiments ; il faut zoomer pour voir l'intérieur. Les performances avec 16 chaînes n'ont été mesurées que sur la machine de développement.
+- **Accessibilité** : le panneau est utilisable au clavier et la barre d'espace est réservée au temps (Entrée active les boutons) ; la scène canvas n'est pas lisible par un lecteur d'écran au-delà de son étiquette et des info-bulles.
+- **Hors ligne** simulé avec un pas plus grossier (jusqu'à 1,4 s) : écarts minimes avec le temps réel.
+
+### Pistes d'amélioration
+
+1. Parties tests avec de vrais joueurs pour recaler le profil actif, le rythme du prologue et la lisibilité du goulot.
+2. Réglages : volume par catégorie, palette pour daltoniens, remappage des touches.
+3. Coût de la zone rouge plus marqué (rebut, chaleur visible, panne immédiate au-delà d'un seuil).
+4. Vie du site : camions de livraison, fumées et lumières par chaîne, sons d'ambiance jour/nuit (oiseaux, grillons de la v5).
+5. Plus d'événements Ferrum (sabotage, rachat d'un fournisseur) et des jalons supplémentaires en bac à sable.
+6. Export / import de la sauvegarde ; statistiques de fin plus détaillées (courbe de la partie).
+7. Niveau de détail intermédiaire pour les grands sites (intérieur simplifié à 150–300 px).

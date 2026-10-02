@@ -140,6 +140,7 @@ function crossed(t: number, dt: number, period: number): boolean {
 
 function timers(s: GameState, dt: number): void {
   for (const w of s.workers) {
+    if (w.rest > 0) w.rest = Math.max(0, w.rest - dt);
     if (w.state !== 'train') continue;
     w.timer -= dt;
     if (w.timer <= 0) {
@@ -247,7 +248,16 @@ function inProgress(st: { units: { busy: boolean; worker: number }[] }): number 
   return n;
 }
 
-function pickJob(c: Chain, w: Worker): Job | null {
+/** Un collègue qualifié attend-il déjà, debout à ce poste ? */
+function idleAt(s: GameState, ci: number, si: number, req: number, except: Worker): boolean {
+  for (const o of s.workers) {
+    if (o !== except && o.chain === ci && o.state === 'idle' && o.rest <= 0 && o.level >= req && Math.abs(o.pos - si) < 0.01) return true;
+  }
+  return false;
+}
+
+function pickJob(s: GameState, c: Chain, ci: number, w: Worker): Job | null {
+  if (w.rest > 0) return null;
   let best: Job | null = null;
   let bs = -1e9;
   for (let si = 3; si >= 0; si--) {
@@ -265,6 +275,8 @@ function pickJob(c: Chain, w: Worker): Job | null {
       }
     }
     if (ui < 0) continue;
+    // Inutile de traverser l'atelier : un collègue sur place prendra la pièce.
+    if (Math.abs(w.pos - si) > 0.01 && idleAt(s, ci, si, TIER_OPERATOR_LEVEL[st.tier], w)) continue;
     let sc = si * ASSIGN.downstream + (w.last === si ? ASSIGN.stay : 0) - Math.abs(w.pos - si) * ASSIGN.walk;
     if (si === 0 && c.buf[1] >= BUFFER_CAP - 1) sc -= ASSIGN.feedPenalty;
     if (w.home >= 0) sc += w.home === si ? ASSIGN.home : -ASSIGN.notHome;
@@ -310,7 +322,7 @@ function workerStep(s: GameState, w: Worker, c: Chain, dt: number, red: boolean)
   // sinon un autre ouvrier traité après lui pourrait lui prendre son poste.
   while (guard++ < 24) {
     if (w.state === 'idle') {
-      const job = pickJob(c, w);
+      const job = pickJob(s, c, w.chain, w);
       if (!job) {
         idle = budget;
         break;
@@ -367,11 +379,26 @@ function workerStep(s: GameState, w: Worker, c: Chain, dt: number, red: boolean)
         w.tu = -1;
         w.state = 'idle';
         complete(s, c, s.chains.indexOf(c), si, ui, red);
+        // Relève : surchargé, il laisse la place à un collègue libre et souffle un moment.
+        if (moraleActive(s) && w.load > MORALE.highLoad && w.morale < MORALE.tired && reliefAvailable(s, c, w, st.tier)) {
+          w.rest = MORALE.restTime;
+          idle = budget;
+          break;
+        }
       }
     }
   }
   const occ = (dt - idle) / dt;
   w.load += (occ - w.load) * (1 - Math.exp(-dt / MORALE.loadTau));
+}
+
+function reliefAvailable(s: GameState, c: Chain, w: Worker, tier: number): boolean {
+  const ci = s.chains.indexOf(c);
+  const req = TIER_OPERATOR_LEVEL[tier];
+  for (const o of s.workers) {
+    if (o !== w && o.chain === ci && o.state === 'idle' && o.rest <= 0 && o.level >= req) return true;
+  }
+  return false;
 }
 
 /** Postes attitrés par le contremaître : répartit les ouvriers selon la charge de chaque poste. */
@@ -623,7 +650,7 @@ function contracts(s: GameState, dt: number): { revenue: number; raw: number; ba
       id: s.nextId++, material: m, qty, delivered: 0,
       price: p * randRange(s, CONTRACTS.spotPrice[0], CONTRACTS.spotPrice[1]) * mult,
       deadline: 0, duration: Math.round(randRange(s, CONTRACTS.spotDeadline[0], CONTRACTS.spotDeadline[1]) / 10) * 10,
-      accepted: false,
+      accepted: false, counted: 0,
     });
   }
   if (s.t >= s.nextLong) {
@@ -692,7 +719,8 @@ function contracts(s: GameState, dt: number): { revenue: number; raw: number; ba
       const value = sc.qty * sc.price;
       revenue += value;
       raw += sc.qty * MATERIALS[sc.material].raw;
-      base += sc.qty * MATERIALS[sc.material].price;
+      // la part de marché a déjà compté ces pièces au fil de leur mise de côté
+      base += Math.max(0, sc.qty - sc.counted) * MATERIALS[sc.material].price;
       s.reputation = clamp(s.reputation + CONTRACTS.repSpotOk, 0, REPUTATION.max);
       s.stats.contractsDone++;
       s.spot.splice(k, 1);
@@ -708,6 +736,18 @@ function contracts(s: GameState, dt: number): { revenue: number; raw: number; ba
     s.reserved[sc.material] += sc.qty - sc.delivered;
   }
   for (let m = 0; m < s.reserved.length; m++) s.reserved[m] = Math.min(s.reserved[m], s.stock[m]);
+  // Part de marché : une pièce mise de côté pour un client est une pièce vendue à ce client.
+  const avail = s.stock.slice();
+  const accepted = s.spot.filter((c) => c.accepted).sort((a, b) => a.deadline - b.deadline);
+  for (const sc of accepted) {
+    const alloc = Math.min(sc.qty - sc.delivered, Math.max(0, avail[sc.material]));
+    avail[sc.material] -= alloc;
+    const committed = sc.delivered + alloc;
+    if (committed > sc.counted) {
+      base += (committed - sc.counted) * MATERIALS[sc.material].price;
+      sc.counted = committed;
+    }
+  }
   s.money += revenue - raw;
   return { revenue, raw, base };
 }

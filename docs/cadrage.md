@@ -230,3 +230,29 @@ Sans trésorerie, le réseau coupe : ralentissement proportionnel, jamais d'arr�
 - Une ou deux fins selon le sort des ouvriers remplacés (reconvertis ou licenciés).
 - Ambiance du récit : mystérieuse façon CloverPit, ou chaleureuse et familiale.
 - Contenu exact de l'arbre de savoir-faire.
+
+## 18. Version PC : écarts avec ce cadrage (2 octobre 2026)
+
+Valeurs re-simulées sur le vrai moteur (`npm run sim`) ; elles font foi dans `src/data/balance.ts`. Le détail et les raisons sont dans `docs/decisions.md`.
+
+| Paramètre | Cadrage | Version PC |
+| --- | --- | --- |
+| Temps manuels | 4 / 6 / 5 / 2 s | 2 / 3 / 2,5 / 1 s (POC v6.1) |
+| Établis | 30 € pondérés | 15 / 20 / 18 / 12 € (POC v6.1) |
+| Outillage | — | 3 niveaux par poste, +25 % chacun, prix de l'unité du palier × 1,5 × 2^niveau, remis à zéro à la modernisation |
+| Prologue | 400 € de dette | 20 € de départ, marché 4 €/s, dette 800 €, échéance 20 min (POC v6.1) |
+| Marché acte I | 24 €/s | 180 €/s |
+| Marché acte II | 1 000 €/s | 1 700 €/s |
+| Marché acte III | 16 000 €/s | 27 000 €/s |
+| Recherche semi-auto / robotisé / usine noire | 25 k€ / 500 k€ / 50 M€ | 80 k€ / 1,2 M€ / 200 M€ |
+| Recherche laiton / inox / titane / diamant | 8 k€ / 30 k€ / 400 k€ / 150 M€ | 30 k€ / 60 k€ / 800 k€ / 800 M€ |
+
+Règles précisées :
+
+- Les déménagements de fin d'acte (I → II → III → IV) sont les prestiges ; les rôles d'encadrement restent sur l'ancien site.
+- Part de marché au prix de base ; un contrat compte au fil de la mise de côté de ses pièces.
+- Relève : un ouvrier fatigué et surchargé laisse sa machine à un collègue libre ; embaucher plus d'ouvriers que de machines préserve le moral.
+- Les établis ne s'usent pas ; trésorerie négative = réseau coupé, machines au rythme du renouvelable (plancher 30 %).
+- Contrats, moral et énergie à partir de l'acte II ; deux fins selon reconversions et licenciements ; ambiance chaleureuse.
+
+Durées simulées (jeu actif) : prologue 7 min, acte I 22 min, acte II 32 min, acte III 61 min, acte IV 203 min, total 5 h 25.
