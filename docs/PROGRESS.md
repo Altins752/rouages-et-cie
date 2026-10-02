@@ -64,14 +64,14 @@ Ce fichier sert à reprendre une session interrompue : l'étape en cours est mar
 - [x] Reconversion (former un technicien) ou licenciement des ouvriers remplacés, comptés pour la fin
 - [x] Tests (act3.test.ts), e2e acte III joué par l'IA, rendu des robots et de l'usine noire, captures vérifiées, commit
 
-## Étape 6 — Acte IV : le monde et la fin — EN COURS
+## Étape 6 — Acte IV : le monde et la fin — FAIT
 
-- [ ] Usine noire, carbure, diamant (scintillement)
-- [ ] Objectif 1,5 Md€, rachat de Ferrum, séquence finale (deux variantes)
-- [ ] Jalons pour occuper l'attente de la recherche diamant
-- [ ] Sim, tests, e2e, capture, commit
+- [x] Usine noire (aucun humain, hall dans le noir, LED), carbure, diamant (scintillement avec bloom)
+- [x] Objectif 1,5 Md€, rachat de Ferrum, séquence finale : l'usine s'éteint, la vieille forge se rallume (deux variantes selon reconversions et licenciements)
+- [x] Jalons de l'acte IV pour occuper l'attente des recherches (usine noire, diamant)
+- [x] e2e : acte IV joué par l'IA, rachat, séquence finale, écran de fin, passage au bac à sable ; captures vérifiées ; commit
 
-## Étape 7 — Prestige, bac à sable, finitions
+## Étape 7 — Prestige, bac à sable, finitions — EN COURS
 
 - [ ] Bac à sable (marché illimité), prestige facultatif « nouveau site », arbre de savoir-faire
 - [ ] Caméra évolutive (atelier → halls → site), niveau de détail
