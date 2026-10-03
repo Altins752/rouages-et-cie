@@ -108,7 +108,7 @@ Nouvelle partie obligatoire (sauvegarde v3, les anciennes sont refusées). Vocab
 - [x] Mode carte postale (touche P, capture PNG) et carte de fin de partie (image et résumé à copier)
 - [x] Succès humoristiques (29, gardés dans le navigateur d'une partie à l'autre, liste dans le menu)
 - [x] Carnet du grand-père : 12 pages à collectionner (menu), gardées d'une partie à l'autre
-- [ ] Radio de l'atelier
+- [x] Radio de l'atelier : 4 styles synthétisés selon le site, bouton au pupitre
 - [ ] Défis de bac à sable
 
 ## Durées simulées

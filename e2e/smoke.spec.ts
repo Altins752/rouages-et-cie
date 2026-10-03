@@ -176,6 +176,23 @@ test.describe('prologue sur PC', () => {
     await shot(page, 'carnet');
   });
 
+  test('radio de l’atelier : joue sans erreur, se coupe au pupitre', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+    await newGame(page);
+    await page.keyboard.press('Escape');
+    // un geste du joueur démarre le son ; la radio suit le site
+    await page.mouse.click(300, 400);
+    await page.waitForTimeout(1500);
+    await page.evaluate(() => { (window as any).__rouages.G.s.act = 3; });
+    await page.waitForTimeout(1500);
+    await expect(page.locator('#btnRadio')).toHaveAttribute('aria-pressed', 'true');
+    await page.locator('#btnRadio').click();
+    await expect(page.locator('#btnRadio')).toHaveAttribute('aria-pressed', 'false');
+    expect(errors).toEqual([]);
+  });
+
   test('sauvegarde : la partie reprend après rechargement', async ({ page }) => {
     await newGame(page);
     await page.keyboard.press('Escape');

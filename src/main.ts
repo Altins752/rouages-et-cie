@@ -20,6 +20,7 @@ import { guideActive, guideTick, stopGuide } from './ui/guide';
 import { resetQuests, updateQuests } from './ui/quests';
 import { freezeDebt, tutorialTick } from './ui/tutorial';
 import { copySummary, endCard, postcardOn, togglePostcard } from './ui/share';
+import { radioTick, setRadio } from './audio/radio';
 import { achievementsTick, unlock, unlocked } from './ui/achievements';
 import { ACHIEVEMENTS } from './story/achievements';
 import { PAGES } from './story/notebook';
@@ -78,6 +79,8 @@ function applySettings(): void {
   applyTheme();
   $('btnSound').setAttribute('aria-pressed', String(G.settings.sound));
   $('btnFx').setAttribute('aria-pressed', String(G.settings.fx && post.ok));
+  $('btnRadio').setAttribute('aria-pressed', String(G.settings.radio));
+  setRadio(G.settings.radio);
   if (!post.ok) $('btnFx').title = 'WebGL indisponible : effets désactivés';
   setSound(G.settings.sound);
   setParticleBudget(reducedMotion() ? 0.3 : 1);
@@ -509,6 +512,13 @@ $('btnFx').addEventListener('click', () => {
   applySettings();
   toast(G.settings.fx ? 'Effets activés' : 'Effets désactivés');
 });
+$('btnRadio').addEventListener('click', () => {
+  G.settings.radio = !G.settings.radio;
+  saveSettings();
+  applySettings();
+  if (G.settings.radio) initAudio();
+  toast(G.settings.radio ? '📻 Radio de l’atelier allumée' : '📻 Radio éteinte');
+});
 $('btnTheme').addEventListener('click', () => {
   G.settings.theme = ({ auto: 'light', light: 'dark', dark: 'auto' } as const)[G.settings.theme];
   saveSettings();
@@ -546,6 +556,7 @@ function ambientTick(view: GameState): void {
   const now = performance.now();
   if (now - ambT < 150) return;
   ambT = now;
+  if (G.started && G.settings.radio) radioTick(view.act);
   let busy = 0;
   let units = 0;
   let robots = 0;

@@ -120,3 +120,7 @@ Format : date — décision — raison.
 ## Carnet du grand-père (2026-10-04)
 
 - 2026-10-04 — Douze pages à collectionner, écrites par le grand-père, racontent la forge (1952), Marcel apprenti, Ferrand père, le rachat de 1978, les gars, la nuit à l'atelier, les robots, puis une lettre au petit-enfant. Chaque page se débloque à une étape (premier écrou, chaîne pourvue, outillage, dette, deuxième usine, première machine, acte II, dix promotions, équipe de nuit, premier robot, acte IV, rachat). Les pages restent dans le navigateur d'une partie à l'autre et se lisent depuis le menu ; une page verrouillée montre comment la trouver. — Donne de la profondeur à l'histoire et au choix moral de la fin, sans alourdir le télex.
+
+## Radio de l'atelier (2026-10-04)
+
+- 2026-10-04 — Une petite musique synthétisée (Web Audio, aucun fichier) qui suit le site : bal musette à la forge (prologue et acte I), swing manouche dans la région, funk années 80 dans le pays, électro dans le monde et le bac à sable. Aux premiers actes, elle passe par un filtre de vieux poste radio qui s'ouvre avec les actes. Bouton « Radio » au pupitre, réglage gardé ; elle suit le bouton Son. — L'ambiance raconte aussi la progression ; synthétisée pour rester dans la règle « aucun fichier audio ».

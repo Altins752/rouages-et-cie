@@ -427,3 +427,9 @@ export function suspendAudio(hidden: boolean): void {
   if (hidden) void AU.c.suspend();
   else if (AU.on) void AU.c.resume();
 }
+
+/** Graphe audio pour la radio de l'atelier (null tant que le son n'a pas démarré). */
+export function audioGraph(): { c: AudioContext; master: GainNode; rev: ConvolverNode | null; noise: AudioBuffer | null } | null {
+  if (!AU.c || !AU.master || !AU.on) return null;
+  return { c: AU.c, master: AU.master, rev: AU.rev, noise: AU.nb };
+}

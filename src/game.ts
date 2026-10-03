@@ -12,6 +12,8 @@ export interface Settings {
   theme: Theme;
   /** Marcel guide au début de chaque phase (rail). */
   tutorial: boolean;
+  /** Radio de l'atelier. */
+  radio: boolean;
 }
 
 export const G = {
@@ -26,7 +28,7 @@ export const G = {
   /** Simulation suspendue (écran titre, fin). */
   paused: true,
   started: false,
-  settings: { sound: true, fx: true, theme: 'auto', tutorial: true } as Settings,
+  settings: { sound: true, fx: true, theme: 'auto', tutorial: true, radio: true } as Settings,
   /** Instant réel de la dernière action du joueur (aide contextuelle). */
   lastInput: 0,
   finale: null as null | { t: number },
