@@ -98,7 +98,7 @@ export function createGame(seed = 1): GameState {
     knowHow: { points: 0, levels: emptyKnowHow() },
     stats: {
       revenueAct: 0, revenueTotal: 0, produced: 0, sold: 0, scrapped: 0, laidOff: 0, retrained: 0, moves: 0,
-      breakdowns: 0, contractsDone: 0, maxShare: 0, playTime: 0, actEnd: [], peakRevenueRate: 0, knowHowEarned: 0,
+      breakdowns: 0, contractsDone: 0, contractsFailed: 0, maxShare: 0, playTime: 0, actEnd: [], peakRevenueRate: 0, knowHowEarned: 0,
       trainings: 0, promotions: 0,
     },
     crisis: { active: null, until: 0, queue: [] },

@@ -145,6 +145,11 @@ export const BEATS: Beat[] = [
     msgs: () => [m(GRID, 'Votre consommation augmente. Le réseau facture 0,04 € le kW·s.\nUne machine en veille consomme encore 30 %. Panneaux solaires, éoliennes et batteries sont disponibles (onglet Atelier, section Énergie).')],
   },
   {
+    id: 'orders',
+    when: (s) => s.act === 1 && s.spot.length > 0,
+    msgs: () => [m(MARCEL, 'Un client passe commande, patron ! C’est dans l’onglet Marché.\nIls demandent ce qu’on sait déjà faire, à peu près ce qu’on produit en quelques minutes. Plus le délai est serré, mieux c’est payé. Et si on rate, les pièces livrées sont payées au prix normal : on perd juste la prime.')],
+  },
+  {
     id: 'contracts',
     when: (s) => s.act >= 2 && s.spot.length > 0,
     msgs: () => [m(CCI, 'Des clients de Ferrum frappent à votre porte : des contrats arrivent (onglet Marché).\nUn contrat accepté met des pièces de côté. Livrez avant l’échéance, sinon votre réputation en pâtit.')],

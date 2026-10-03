@@ -23,7 +23,7 @@ import type { View } from './panel';
 import { dataView } from './data';
 import { revenueRate } from './rates';
 import {
-  ACT_NAMES, KIND_NAMES, KNOW_HOW_DESC, KNOW_HOW_NAMES, LEVEL_NAMES, MACHINE_NAMES, MARKET_NAMES, MATERIAL_DESC,
+  ACT_NAMES, KIND_NAMES, SPOT_LEVEL_NAMES, KNOW_HOW_DESC, KNOW_HOW_NAMES, LEVEL_NAMES, MACHINE_NAMES, MARKET_NAMES, MATERIAL_DESC,
   MATERIAL_NAMES, ROLE_DATA, ROLE_DECISION, ROLE_NAMES, STATION_ICONS, STATION_NAMES, STATION_ROLE, TIER_NAMES, TIER_SHORT,
 } from './text';
 
@@ -558,14 +558,17 @@ function vMarche(s: GameState): View {
     d.site = gain < 1;
   }
   // Contrats
-  if (s.act >= CONTRACTS.act) {
-    h += `<div class="sec">Contrats<span>réputation niveau ${repLevel(s)} · prix ×${fmtP(priceMult(s))}</span></div>`;
+  if (s.act >= CONTRACTS.spotAct && s.act <= 4) {
+    h += s.act >= CONTRACTS.act
+      ? `<div class="sec">Contrats<span>réputation niveau ${repLevel(s)} · prix ×${fmtP(priceMult(s))}</span></div>`
+      : '<div class="sec">Commandes spéciales<span>une à la fois, sans pénalité</span></div>';
     const spots = s.spot;
-    if (!spots.length && !s.long.length) h += '<div class="note">Aucune offre pour l’instant. Les clients se manifestent au fil du temps.</div>';
+    if (!spots.length && !s.long.length) h += '<div class="note">Aucune offre pour l’instant. Les clients passent commande selon ce que vous produisez déjà.</div>';
     spots.forEach((c) => {
       const val = c.qty * c.price;
       const base = MATERIALS[c.material].price;
-      h += `<div class="card col"><div class="row"><div class="ic" aria-hidden="true">📄</div><div class="info"><div class="nm">${fmt(c.qty)} écrous en ${MATERIAL_NAMES[c.material].toLowerCase()} <span class="tag">${fmtP(c.price)} €/pièce</span></div><div class="ef" data-k="sp${c.id}"></div></div></div>`;
+      const lvl = SPOT_LEVEL_NAMES[c.level ?? 0];
+      h += `<div class="card col"><div class="row"><div class="ic" aria-hidden="true">📄</div><div class="info"><div class="nm">${fmt(c.qty)} écrous en ${MATERIAL_NAMES[c.material].toLowerCase()} <span class="tag${(c.level ?? 0) === 2 ? ' red' : ''}">${lvl}</span> <span class="tag">${fmtP(c.price)} €/pièce</span></div><div class="ef" data-k="sp${c.id}"></div></div></div>`;
       if (c.accepted) {
         h += `<div class="bar"><i data-w="sp${c.id}" style="background:#57d987"></i></div>`;
         if (!s.roles.logistics) h += `<div class="btns"><button class="buy" type="button" data-act="deliver" data-i="${c.id}" data-b="dl${c.id}" data-fk="dl${c.id}"><span class="c">Livrer</span><small>le stock disponible</small></button></div>`;
@@ -574,7 +577,10 @@ function vMarche(s: GameState): View {
         d[`dl${c.id}`] = s.stock[c.material] <= 0;
       } else {
         h += `<div class="btns"><button class="buy" type="button" data-act="accept" data-i="${c.id}" data-fk="ac${c.id}"><span class="c">Accepter</span><small>${euros(val)}</small></button><button class="buy plain" type="button" data-act="decline" data-i="${c.id}" data-fk="de${c.id}"><span class="c">Refuser</span><small>${c.price >= base ? 'bon prix' : 'sous le prix'}</small></button></div>`;
-        k[`sp${c.id}`] = `délai ${mmss(c.duration)} une fois accepté · ${c.price >= base ? '+' : ''}${Math.round((c.price / base - 1) * 100)} % sur le prix de base`;
+        const rate = s.market.prodRate[c.material];
+        const need = rate > 0 ? c.qty / (rate * CONTRACTS.spotShare) : Infinity;
+        const engaged = s.spot.filter((x) => x.accepted && x.material === c.material).reduce((a, x) => a + x.qty - x.delivered, 0);
+        k[`sp${c.id}`] = `délai ${mmss(c.duration)} une fois accepté · la moitié de votre production de ce matériau pendant ≈ ${isFinite(need) ? mmss(need) : '—'} · ${c.price >= base ? '+' : ''}${Math.round((c.price / base - 1) * 100)} % sur le prix${engaged > 0 ? ` · ⚠ ${fmt(engaged)} pièces déjà promises en ${MATERIAL_NAMES[c.material].toLowerCase()}` : ''}`;
       }
       h += '</div>';
     });

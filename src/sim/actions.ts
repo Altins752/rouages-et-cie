@@ -8,7 +8,7 @@ import {
   TIER_RESEARCH, TOOL_MAX, DOOR_POS,
 } from '../data/balance';
 import type { KnowHowId, RoleId } from '../data/balance';
-import { machineRank, modernizeMachine, releaseWorker, startCourse } from './engine';
+import { machineRank, modernizeMachine, releaseWorker, spotRoom, startCourse } from './engine';
 import {
   canPromote, canTrain, conveyorCost, crankUseful, factoryValue, knowHow, knowHowCost, knowHowGain, machineCycle, materialOk,
   modernizeCost, newFactoryCost, nightCost, promotionCost, toolCost, trainingCost, unitPrice,
@@ -516,7 +516,7 @@ export function declineSpot(s: GameState, id: number): Result {
 export function deliverSpot(s: GameState, id: number): Result {
   const c = s.spot.find((x) => x.id === id);
   if (!c || !c.accepted) return fail('contrat');
-  const d = Math.min(s.stock[c.material], c.qty - c.delivered);
+  const d = Math.min(s.stock[c.material], spotRoom(c));
   if (d <= 0) return fail('stock');
   s.stock[c.material] -= d;
   c.delivered += d;

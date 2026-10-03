@@ -95,6 +95,8 @@ export const MISSED_QUIPS = {
   ],
 };
 
+export const SPOT_LEVEL_NAMES = ['Tranquille', 'Serrée', 'Coup de bourre'];
+
 export const ACT_NAMES = ['Prologue — La dette', 'Acte I — La ville', 'Acte II — La région', 'Acte III — Le pays', 'Acte IV — Le monde', 'Bac à sable'];
 export const SITE_NAMES = ['Forge du quartier', 'Forge du quartier', 'Usine de la région', 'Complexe national', 'Site mondial', 'Site mondial'];
 export const MARKET_NAMES = ['le quartier', 'la ville', 'la région', 'le pays', 'le monde', 'le monde'];

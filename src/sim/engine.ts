@@ -21,7 +21,7 @@ import {
 } from './formulas';
 import { rand, randInt, randRange } from './rng';
 import { machines } from './state';
-import type { Factory, GameState, Line, Machine, SimEvent, Worker } from './types';
+import type { Factory, GameState, Line, Machine, SimEvent, Worker, SpotContract } from './types';
 
 export interface StepInput {
   /** Compte-tours en zone rouge : usure ×5, plus de rebut. */
@@ -916,6 +916,11 @@ function sales(s: GameState, dt: number): { revenue: number; raw: number; base: 
 
 // -------------------------------------------------------------- Contrats
 
+/** Pièces qu'une commande peut encore mettre de côté maintenant (sa part de la production). */
+export function spotRoom(sc: SpotContract): number {
+  return Math.max(0, Math.min(sc.qty, Math.floor(sc.quota ?? sc.qty)) - sc.delivered);
+}
+
 function producible(s: GameState): number[] {
   const set = new Set<number>();
   for (const f of s.factories) set.add(f.material);
@@ -927,27 +932,36 @@ function contracts(s: GameState, dt: number): { revenue: number; raw: number; ba
   let raw = 0;
   let base = 0;
   const act = ACTS[s.act];
-  if (s.act < CONTRACTS.act) return { revenue, raw, base };
+  if (s.act < CONTRACTS.spotAct || s.act > 4) return { revenue, raw, base };
   const mult = priceMult(s);
   const mats = producible(s);
 
-  // Nouvelles offres
+  // Nouvelles offres, taillées sur la production mesurée : 2 à 5 min de production.
   if (s.t >= s.nextSpot) {
     s.nextSpot = s.t + CONTRACTS.spotRefresh * randRange(s, 0.7, 1.3);
-    const offers = s.spot.filter((c) => !c.accepted);
-    if (offers.length >= CONTRACTS.spotOffers) s.spot.splice(s.spot.indexOf(offers[0]), 1);
-    const m = mats[randInt(s, mats.length)];
-    const p = MATERIALS[m].price;
-    const secs = randRange(s, CONTRACTS.spotSize[0], CONTRACTS.spotSize[1]);
-    const qty = Math.max(10, Math.round((act.market * 0.5 * secs) / p / 5) * 5);
-    s.spot.push({
-      id: s.nextId++, material: m, qty, delivered: 0,
-      price: p * randRange(s, CONTRACTS.spotPrice[0], CONTRACTS.spotPrice[1]) * mult,
-      deadline: 0, duration: Math.round(randRange(s, CONTRACTS.spotDeadline[0], CONTRACTS.spotDeadline[1]) / 10) * 10,
-      accepted: false, counted: 0,
-    });
+    const single = s.act < CONTRACTS.act;
+    if (!single || s.spot.length === 0) {
+      const offers = s.spot.filter((c) => !c.accepted);
+      if (offers.length >= CONTRACTS.spotOffers) s.spot.splice(s.spot.indexOf(offers[0]), 1);
+      const able = mats.filter((m) => s.market.prodRate[m] >= CONTRACTS.spotMinRate);
+      if (able.length) {
+        const m = able[randInt(s, able.length)];
+        const p = MATERIALS[m].price;
+        const rate = s.market.prodRate[m];
+        const level = randInt(s, CONTRACTS.spotLevels.length);
+        const lv = CONTRACTS.spotLevels[level];
+        const share = rate * CONTRACTS.spotShare;
+        const qty = Math.max(5, Math.round((share * randRange(s, CONTRACTS.spotSize[0], CONTRACTS.spotSize[1])) / 5) * 5);
+        s.spot.push({
+          id: s.nextId++, material: m, qty, delivered: 0, level, quota: 0,
+          price: p * (1 + lv.premium) * mult,
+          deadline: 0, duration: Math.ceil((qty / share) * lv.slack / 10) * 10,
+          accepted: false, counted: 0,
+        });
+      }
+    }
   }
-  if (s.t >= s.nextLong) {
+  if (s.act >= CONTRACTS.act && s.t >= s.nextLong) {
     s.nextLong = s.t + CONTRACTS.longRefresh * randRange(s, 0.7, 1.3);
     const offers = s.long.filter((c) => !c.accepted);
     if (offers.length >= CONTRACTS.longOffers) s.long.splice(s.long.indexOf(offers[0]), 1);
@@ -1002,8 +1016,9 @@ function contracts(s: GameState, dt: number): { revenue: number; raw: number; ba
   for (let k = s.spot.length - 1; k >= 0; k--) {
     const sc = s.spot[k];
     if (!sc.accepted) continue;
+    sc.quota = Math.min(sc.qty, (sc.quota ?? sc.delivered) + CONTRACTS.spotShare * Math.max(s.market.prodRate[sc.material], 0.01) * dt);
     if (s.roles.logistics) {
-      const d = Math.min(s.stock[sc.material], sc.qty - sc.delivered);
+      const d = Math.min(s.stock[sc.material], spotRoom(sc));
       if (d > 0) {
         s.stock[sc.material] -= d;
         sc.delivered += d;
@@ -1011,6 +1026,8 @@ function contracts(s: GameState, dt: number): { revenue: number; raw: number; ba
     }
     if (sc.delivered >= sc.qty) {
       const value = sc.qty * sc.price;
+      // le client fait partie du marché : sa commande remplace des ventes, seule la prime est en plus
+      s.market.acc -= sc.qty * MATERIALS[sc.material].price;
       revenue += value;
       raw += sc.qty * MATERIALS[sc.material].raw;
       // la part de marché a déjà compté ces pièces au fil de leur mise de côté
@@ -1023,18 +1040,26 @@ function contracts(s: GameState, dt: number): { revenue: number; raw: number; ba
     }
     if (s.t > sc.deadline) {
       s.spot.splice(k, 1);
-      s.reputation = clamp(s.reputation + CONTRACTS.repSpotFail, 0, REPUTATION.max);
+      s.stats.contractsFailed++;
+      // les pièces déjà livrées sont payées au prix normal : on ne perd que la prime
+      if (sc.delivered > 0) {
+        s.market.acc -= sc.delivered * MATERIALS[sc.material].price;
+        revenue += sc.delivered * MATERIALS[sc.material].price * mult;
+        raw += sc.delivered * MATERIALS[sc.material].raw;
+      }
+      // acte I : on perd seulement la prime ; la réputation compte à partir de l'acte II
+      if (s.act >= CONTRACTS.act) s.reputation = clamp(s.reputation + CONTRACTS.repSpotFail, 0, REPUTATION.max);
       emit(s, { type: 'spotFailed', id: sc.id });
       continue;
     }
-    s.reserved[sc.material] += sc.qty - sc.delivered;
+    s.reserved[sc.material] += spotRoom(sc);
   }
   for (let m = 0; m < s.reserved.length; m++) s.reserved[m] = Math.min(s.reserved[m], s.stock[m]);
   // Part de marché : une pièce mise de côté pour un client est une pièce vendue à ce client.
   const avail = s.stock.slice();
   const accepted = s.spot.filter((c) => c.accepted).sort((a, b) => a.deadline - b.deadline);
   for (const sc of accepted) {
-    const alloc = Math.min(sc.qty - sc.delivered, Math.max(0, avail[sc.material]));
+    const alloc = Math.min(spotRoom(sc), Math.max(0, avail[sc.material]));
     avail[sc.material] -= alloc;
     const committed = sc.delivered + alloc;
     if (committed > sc.counted) {

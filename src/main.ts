@@ -165,11 +165,11 @@ function handleEvents(events: SimEvent[]): void {
         break;
       case 'spotDone':
         sfx('cash');
-        toast(`📄 Contrat livré : +${fmt(e.value)} €`);
+        toast(`📄 ${s.act < 2 ? 'Commande' : 'Contrat'} livré${s.act < 2 ? 'e' : ''} : +${fmt(e.value)} €`);
         break;
       case 'spotFailed':
         sfx('fail');
-        toast('📄 Contrat manqué : réputation en baisse', true);
+        toast(s.act < 2 ? '📄 Commande manquée : la prime est perdue' : '📄 Contrat manqué : réputation en baisse', true);
         break;
       case 'longBroken':
         sfx('fail');

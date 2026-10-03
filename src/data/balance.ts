@@ -57,7 +57,7 @@ export const ROBOT_TIER = 3;
 export const BLACK_TIER = 4;
 export const ROBOT_NO_TECH_FACTOR = 0.5;
 /** Recherche des paliers (€). */
-export const TIER_RESEARCH = [0, 300, 150_000, 3_000_000, 500_000_000];
+export const TIER_RESEARCH = [0, 300, 150_000, 3_000_000, 750_000_000];
 /** Acte minimal pour rechercher chaque palier. */
 export const TIER_MIN_ACT = [0, 1, 2, 3, 4];
 /** Recherches de confort du bureau d'études. */
@@ -283,13 +283,24 @@ export const SHARE_TAU = 15;
 // -------------------------------------------------------------- Contrats
 
 export const CONTRACTS = {
+  /** Contrats long terme, réputation des contrats ponctuels. */
   act: 2,
-  spotPrice: [0.85, 1.3],
-  /** Taille d'un contrat ponctuel en secondes de marché. */
-  spotSize: [20, 60],
-  spotDeadline: [120, 300],
+  /** Commandes spéciales (contrats ponctuels) dès l'acte I, une à la fois avant l'acte II. */
+  spotAct: 1,
+  /** Taille d'une commande : secondes de la production mesurée du matériau. */
+  spotSize: [120, 300],
+  /** Difficulté : délai = temps nécessaire × slack ; prix = prix de base × (1 + prime). */
+  spotLevels: [
+    { slack: 2, premium: 0.08 },
+    { slack: 1.3, premium: 0.15 },
+    { slack: 1.1, premium: 0.25 },
+  ],
+  /** Production minimale d'un matériau (pièces/s) pour qu'on en commande. */
+  spotMinRate: 0.05,
+  /** Part de la production du matériau qu'une commande acceptée met de côté ; le reste se vend. */
+  spotShare: 0.5,
   spotOffers: 3,
-  spotRefresh: 90,
+  spotRefresh: 150,
   longPrice: [1.08, 1.22],
   /** Prélèvement d'un contrat long terme, en part du marché. */
   longShare: [0.04, 0.12],
@@ -298,7 +309,7 @@ export const CONTRACTS = {
   /** Rupture si le stock manque pendant ce temps (s). */
   longGrace: 30,
   maxLong: 4,
-  repSpotOk: 3,
+  repSpotOk: 0.5,
   repSpotFail: -2,
   repLongBreak: -4,
 };

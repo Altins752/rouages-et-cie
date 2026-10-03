@@ -93,7 +93,7 @@ describe('acte III : rôles support', () => {
     const s = act3();
     A.hireRole(s, 'logistics');
     s.stock[0] = 50;
-    s.spot.push({ id: 501, material: 0, qty: 20, delivered: 0, price: 3, deadline: 0, duration: 120, accepted: false, counted: 0 });
+    s.spot.push({ id: 501, material: 0, qty: 20, delivered: 0, price: 3, deadline: 0, duration: 120, accepted: false, counted: 0, quota: 20 });
     A.acceptSpot(s, 501);
     advance(s, 0.5, { red: false }, 0.25);
     expect(s.spot.find((c) => c.id === 501)).toBeUndefined();

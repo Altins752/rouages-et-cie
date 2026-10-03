@@ -155,14 +155,16 @@ function execute(ai: AiState, s: GameState, c: Candidate): boolean {
 }
 
 function contractsStep(s: GameState): void {
-  if (s.act < CONTRACTS.act) return;
+  if (s.act < CONTRACTS.spotAct) return;
   for (const sc of s.spot) {
     if (sc.accepted) {
       if (!s.roles.logistics) A.deliverSpot(s, sc.id);
       continue;
     }
+    // une commande à la fois par matériau, tenue avec 30 % de marge à la cadence actuelle
+    if (s.spot.some((x) => x.accepted && x.material === sc.material)) continue;
     const rate = s.market.prodRate[sc.material];
-    if (rate * sc.duration * 0.4 >= sc.qty && sc.price >= MATERIALS[sc.material].price) A.acceptSpot(s, sc.id);
+    if (rate * CONTRACTS.spotShare * sc.duration >= sc.qty * 1.3 && sc.price >= MATERIALS[sc.material].price) A.acceptSpot(s, sc.id);
   }
   if (!s.roles.sales) {
     for (const lc of s.long) {

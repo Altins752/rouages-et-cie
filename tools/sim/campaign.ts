@@ -171,6 +171,9 @@ function main(): void {
     }
     const blocked = r.acts.some((a) => !a.done);
     console.log(`  Total ${blocked ? 'BLOQUÉ' : ''} ${mm(r.total)} min réelles (${(r.total / 3600).toFixed(2)} h)  · fin : ${r.s.ending ?? '—'} · savoir-faire gagné ${r.s.stats.knowHowEarned}`);
+    const done = r.s.stats.contractsDone;
+    const failed = r.s.stats.contractsFailed;
+    console.log(`  Commandes et contrats ponctuels : ${done} tenus, ${failed} manqués`);
     out[p.id] = { acts: r.acts.map((a) => ({ act: a.act, realMin: +mm(a.real), gameMin: +mm(a.game), firstBuy: Math.round(a.firstBuy), maxWait: Math.round(a.maxWait), maxDry: Math.round(a.maxDry), buysPer10: +a.buysPer10.toFixed(1), done: a.done })), totalH: +(r.total / 3600).toFixed(2) };
     if (blocked) okAll = false;
     if (p.id === 'actif') {
@@ -181,6 +184,7 @@ function main(): void {
         ['premier achat avant 60 s', pro && pro.firstBuy >= 0 && pro.firstBuy <= 60],
         ['jamais plus de 3 min sans achat qui augmente les recettes', r.acts.every((a) => a.maxWait <= 180)],
         ['au moins 4 achats par 10 min dans chaque acte', r.acts.every((a) => a.buysPer10 >= 4)],
+        ['commandes acceptées tenues à 90 % au moins', r.s.stats.contractsDone >= 0.9 * (r.s.stats.contractsDone + r.s.stats.contractsFailed)],
       ] as const;
       for (const [label, ok] of checks) {
         console.log(`  [${ok ? 'OK' : '!!'}] ${label}`);

@@ -105,6 +105,10 @@ export interface SpotContract {
   accepted: boolean;
   /** Pièces déjà comptées dans la part de marché (au fil de la mise de côté). */
   counted: number;
+  /** Difficulté : 0 tranquille, 1 serrée, 2 coup de bourre (absent des vieilles parties). */
+  level?: number;
+  /** Pièces qu'on peut déjà mettre de côté : la commande prend une part de la production, au fil de l'eau. */
+  quota?: number;
 }
 
 export interface LongContract {
@@ -177,6 +181,8 @@ export interface Stats {
   moves: number;
   breakdowns: number;
   contractsDone: number;
+  /** Contrats ponctuels acceptés puis manqués (échéance dépassée). */
+  contractsFailed: number;
   maxShare: number;
   playTime: number;
   /** Instant (jeu) de fin de chaque acte. */

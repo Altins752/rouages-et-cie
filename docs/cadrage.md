@@ -281,6 +281,10 @@ Demandée après les premières parties (acte III déficitaire, recettes invisib
 
 Durées simulées (jeu actif, graine 11) : prologue 6,5 min, acte I 39, acte II 47, acte III 55, acte IV 169, total 5 h 16.
 
+## 21. Commandes spéciales (4 octobre 2026)
+
+Remplacent les contrats ponctuels de la section 12, dès l'acte I (une à la fois, sans réputation avant l'acte II). Taille : 2 à 5 min de la moitié de la production du matériau ; une commande acceptée met de côté la moitié de cette production au fil de l'eau. Difficultés : délai × 2 / × 1,3 / × 1,1, prime +8 / +15 / +25 %. Une commande manquée paie les pièces livrées au prix normal. Réputation +0,5 par commande tenue. Recherche de l'usine noire : 750 M€.
+
 ## 20. Équipe de nuit (4 octobre 2026)
 
 Remplace la progression hors ligne de la version PC (8 h à pleine cadence). Disponible à l'acte II, gardée au déménagement.
