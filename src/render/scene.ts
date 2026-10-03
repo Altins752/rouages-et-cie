@@ -1,28 +1,26 @@
 /**
- * Scène de l'usine (canvas 2D). Lit l'état de la simulation, ne le modifie jamais.
- * De près : l'intérieur de chaque hall (repris du POC). De loin : les bâtiments.
+ * Scène de l'usine. Lit l'état de la simulation, ne le modifie jamais.
+ * Quatre couches : la scène (albédo texturé), l'émissif (halo), la lumière (effets complets)
+ * et les signaux (voyants, textes, cadres), jamais étalonnés.
+ * De près : l'intérieur de chaque hall. De loin : les bâtiments.
  */
-import { BUFFER_CAP, CARRY_TIME, MATERIALS, MAX_UNITS, TIER_OPERATOR_LEVEL, TOOL_MAX } from '../data/balance';
-import { estimateFactory } from '../sim/analysis';
-import { conveyorActive } from '../sim/engine';
-import { ambient, daylight, windFactor } from '../sim/env';
-import { crankUseful, machineCycle, robotFactory } from '../sim/formulas';
-import type { Factory, GameState, Line, Worker } from '../sim/types';
-import { STATION_NAMES } from '../ui/text';
-import {
-  ANNEX_W, CRANK_X, FLOOR, HALL_H, HALL_W, LY, ROOF_H, ROW_BASE, STEP_X, SX, gridCols, hallOrigin, posX, siteBounds, siteExtent,
-  turbinePos,
-} from './layout';
+import type { GameState } from '../sim/types';
+import { ERAS, eraOf } from './era';
+import type { Grade } from './era';
+import { drawAnnex, drawBackdrop, drawExterior, drawGround, drawRoof, drawSky, drawTraffic, drawTurbines, solarSplit } from './exterior';
+import { drawInterior, hlFactory } from './interior';
+import { CRANK_X, FLOOR, HALL_H, HALL_W, LY, ROOF_H, ROW_BASE, STEP_X, SX, hallOrigin, siteExtent } from './layout';
 import type { Bounds } from './layout';
-import { particles, smoke } from './particles';
+import { particles } from './particles';
+import { HEAT_MAX } from './postfx';
+import { LIGHT_SCALE, MATERIAL_COLORS, R, SIG, TAU, clamp, lamp, setWorld } from './rctx';
+import { setTexLod } from './textures';
+import { WPOS, hlAlpha } from './workers';
 
-const TAU = Math.PI * 2;
-const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
+export { MATERIAL_COLORS };
 
 /** Largeur d'un hall à l'écran (px) au-delà de laquelle on montre l'intérieur. */
 export const INTERIOR_PX = 300;
-
-export const MATERIAL_COLORS = ['#6f747c', '#c3ccd6', '#e0b244', '#eef2f6', '#8fb0e0', '#33363d', '#d8f6ff'];
 
 // ------------------------------------------------------------------ Caméra
 
@@ -120,6 +118,10 @@ export interface SceneOpts {
   hover: Hover | null;
   /** Élément désigné depuis le panneau : « u:usine:chaîne:poste », « m:… », « c:usine:chaîne », « t:palier:poste », « w:ouvrier ». */
   highlight?: string | null;
+  /** Pixels de l'écran par pixel CSS (lisibilité des textes). */
+  dpr?: number;
+  /** La radio de l'atelier joue. */
+  radio?: boolean;
 }
 
 /** Élément survolé : usine (hall), chaîne, poste (-2 = convoyeur), ouvrier. -1 = aucun. */
@@ -128,874 +130,6 @@ export interface Hover {
   line: number;
   station: number;
   worker: number;
-}
-
-/** Positions de rendu des ouvriers (lissage vertical). */
-const WPOS = new Map<number, { x: number; y: number; anim: number }>();
-
-let ctx: CanvasRenderingContext2D;
-let glow: CanvasRenderingContext2D | null = null;
-let S: GameState;
-let O: SceneOpts;
-
-function rr(x: number, y: number, w: number, h: number, r: number, c = ctx): void {
-  c.beginPath();
-  c.moveTo(x + r, y);
-  c.arcTo(x + w, y, x + w, y + h, r);
-  c.arcTo(x + w, y + h, x, y + h, r);
-  c.arcTo(x, y + h, x, y, r);
-  c.arcTo(x, y, x + w, y, r);
-  c.closePath();
-}
-
-/** Point lumineux, dessiné aussi dans la couche émissive (bloom). */
-function glowDot(x: number, y: number, r: number, rgb: string, a: number): void {
-  ctx.fillStyle = `rgba(${rgb},${a})`;
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, TAU);
-  ctx.fill();
-  if (glow) {
-    glow.fillStyle = `rgba(${rgb},${a})`;
-    glow.beginPath();
-    glow.arc(x, y, r * 1.6, 0, TAU);
-    glow.fill();
-  }
-}
-
-function piece(x: number, y: number, r: number, m: number, rot = 0): void {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(rot);
-  ctx.fillStyle = MATERIAL_COLORS[m];
-  ctx.beginPath();
-  for (let k = 0; k < 6; k++) {
-    const a = (k * TAU) / 6;
-    ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
-  }
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = 'rgba(0,0,0,.45)';
-  ctx.beginPath();
-  ctx.arc(0, 0, r * 0.4, 0, TAU);
-  ctx.fill();
-  ctx.strokeStyle = m === 5 ? 'rgba(160,170,190,.6)' : 'rgba(255,255,255,.35)';
-  ctx.lineWidth = 0.6;
-  ctx.beginPath();
-  ctx.arc(0, 0, r * 0.75, Math.PI * 1.1, Math.PI * 1.6);
-  ctx.stroke();
-  ctx.restore();
-  if (m === 6 && Math.sin(O.T * 7 + x * 3 + y) > 0.75) glowDot(x + r * 0.4, y - r * 0.4, 0.8, '230,250,255', 0.9);
-}
-
-function lopin(x: number, y: number, m: number): void {
-  ctx.fillStyle = MATERIAL_COLORS[m];
-  rr(x - 3, y - 2, 6, 4, 1);
-  ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,.3)';
-  ctx.fillRect(x - 3, y - 2, 6, 1);
-}
-
-// ------------------------------------------------------------------ Intérieur
-
-function hallStyle(f: Factory): 'forge' | 'plant' | 'black' {
-  let any = false;
-  let black = true;
-  for (const l of f.lines) for (const m of l.slots) {
-    if (!m) continue;
-    any = true;
-    if (m.tier !== 4) black = false;
-  }
-  if (any && black) return 'black';
-  return S.act <= 1 && S.stats.moves === 0 ? 'forge' : 'plant';
-}
-
-function lightLevel(style: string): number {
-  if (O.finale) {
-    if (O.finale.phase === 'off') return style === 'black' ? 0 : 1 - O.finale.k;
-    return O.finale.k;
-  }
-  return style === 'black' ? 0 : 1;
-}
-
-function drawRoom(f: Factory, fi: number): void {
-  const style = hallStyle(f);
-  const amb = ambient(S.t);
-  const lights = lightLevel(style);
-  // mur
-  const g = ctx.createLinearGradient(0, 0, 0, FLOOR);
-  if (style === 'forge') {
-    g.addColorStop(0, '#45362e');
-    g.addColorStop(1, '#2f2520');
-  } else if (style === 'black') {
-    g.addColorStop(0, '#0d0f12');
-    g.addColorStop(1, '#08090b');
-  } else {
-    g.addColorStop(0, '#3c4047');
-    g.addColorStop(1, '#2a2d32');
-  }
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, HALL_W, FLOOR);
-  ctx.strokeStyle = style === 'forge' ? 'rgba(0,0,0,.25)' : 'rgba(0,0,0,.16)';
-  ctx.lineWidth = 0.6;
-  if (style === 'forge') {
-    for (let y = 8, r = 0; y < 100; y += 8, r++) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(HALL_W, y);
-      ctx.stroke();
-      for (let x = (r % 2) * 10; x < HALL_W; x += 20) {
-        ctx.beginPath();
-        ctx.moveTo(x, y - 8);
-        ctx.lineTo(x, y);
-        ctx.stroke();
-      }
-    }
-  } else {
-    for (let x = 0; x < HALL_W; x += 25) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, 100);
-      ctx.stroke();
-    }
-  }
-  // verrières : le ciel suit le jour et la nuit
-  const sky1 = mix([22, 26, 48], [156, 200, 232], amb);
-  const sky2 = mix([40, 34, 60], [217, 236, 246], amb);
-  for (let i = 0; i < 5; i++) {
-    const x = 20 + i * 76;
-    ctx.fillStyle = '#1e2126';
-    rr(x - 2, 10, 58, 46, 2);
-    ctx.fill();
-    const sg = ctx.createLinearGradient(0, 12, 0, 54);
-    sg.addColorStop(0, sky1);
-    sg.addColorStop(1, sky2);
-    ctx.fillStyle = style === 'black' ? '#0b0d10' : sg;
-    ctx.fillRect(x, 12, 54, 42);
-    ctx.fillStyle = '#1e2126';
-    ctx.fillRect(x + 26, 12, 2, 42);
-    ctx.fillRect(x, 32, 54, 2);
-    ctx.fillStyle = `rgba(255,255,255,${0.1 + 0.25 * amb})`;
-    ctx.fillRect(x + 3, 14, 4, 38);
-    if (amb < 0.3 && style !== 'black') {
-      ctx.fillStyle = 'rgba(255,255,255,.7)';
-      for (let k = 0; k < 3; k++) ctx.fillRect(x + ((k * 17 + i * 11) % 50) + 2, 15 + ((k * 13 + i * 7) % 16), 1, 1);
-    }
-  }
-  // poutre et lampes
-  ctx.fillStyle = '#24272c';
-  ctx.fillRect(0, 62, HALL_W, 7);
-  for (let s = 0; s < 4; s++) {
-    const x = SX[s];
-    ctx.strokeStyle = '#15171a';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(x, 69);
-    ctx.lineTo(x, 74);
-    ctx.stroke();
-    ctx.fillStyle = '#5b6068';
-    ctx.beginPath();
-    ctx.moveTo(x - 7, 79);
-    ctx.lineTo(x - 3, 74);
-    ctx.lineTo(x + 3, 74);
-    ctx.lineTo(x + 7, 79);
-    ctx.fill();
-    if (lights > 0.01) {
-      const a = (0.1 + 0.14 * (1 - amb)) * lights;
-      const lg = ctx.createRadialGradient(x, 80, 2, x, 220, 170);
-      lg.addColorStop(0, `rgba(255,224,160,${a})`);
-      lg.addColorStop(1, 'rgba(255,224,160,0)');
-      ctx.fillStyle = lg;
-      ctx.beginPath();
-      ctx.moveTo(x - 6, 79);
-      ctx.lineTo(x + 6, 79);
-      ctx.lineTo(x + 40, FLOOR);
-      ctx.lineTo(x - 40, FLOOR);
-      ctx.fill();
-      glowDot(x, 79, 2, '255,226,170', 0.85 * lights);
-    }
-  }
-  // plaques de poste
-  ctx.font = '600 8px "Chakra Petch", system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  for (let s = 0; s < 4; s++) {
-    ctx.fillStyle = style === 'black' ? '#1b1e22' : '#d8d2c2';
-    rr(SX[s] - 26, 83, 52, 11, 1.5);
-    ctx.fill();
-    ctx.fillStyle = style === 'black' ? '#4fd8ff' : '#2a2620';
-    ctx.fillText(STATION_NAMES[s], SX[s], 88.8);
-  }
-  // allées des chaînes : une bande de sol par rangée, numérotée
-  for (let l = 0; l < f.lines.length; l++) {
-    const y = LY[l] + ROW_BASE;
-    ctx.fillStyle = style === 'black' ? 'rgba(79,216,255,.06)' : 'rgba(0,0,0,.22)';
-    ctx.fillRect(0, y - 2, HALL_W, 7);
-    ctx.fillStyle = style === 'black' ? '#1d6c80' : 'rgba(242,183,5,.55)';
-    ctx.fillRect(0, y + 5, HALL_W, 1);
-    ctx.fillStyle = 'rgba(0,0,0,.55)';
-    rr(3, LY[l] - 6, 16, 12, 2);
-    ctx.fill();
-    ctx.fillStyle = f.lines[l].slots.some(Boolean) ? '#ffb02e' : 'rgba(255,176,46,.35)';
-    ctx.font = '8px "Share Tech Mono", monospace';
-    ctx.fillText(`C${l + 1}`, 11, LY[l] + 0.5);
-  }
-  // sol
-  const fg = ctx.createLinearGradient(0, FLOOR, 0, HALL_H);
-  fg.addColorStop(0, style === 'black' ? '#14161a' : '#55585e');
-  fg.addColorStop(1, style === 'black' ? '#0b0c0e' : '#3b3e43');
-  ctx.fillStyle = fg;
-  ctx.fillRect(0, FLOOR, HALL_W, HALL_H - FLOOR);
-  ctx.fillStyle = style === 'black' ? '#1d6c80' : '#f2b705';
-  ctx.fillRect(0, FLOOR + 2, HALL_W, 2);
-  ctx.fillStyle = 'rgba(0,0,0,.18)';
-  for (let x = 0; x < HALL_W; x += 40) ctx.fillRect(x, FLOOR + 4, 1, HALL_H - FLOOR - 4);
-  // porte
-  ctx.fillStyle = '#22252a';
-  ctx.fillRect(374, FLOOR - 64, 26, 64);
-  ctx.fillStyle = style === 'black' ? '#2a2e34' : '#6d737b';
-  ctx.fillRect(377, FLOOR - 61, 23, 61);
-  ctx.strokeStyle = 'rgba(0,0,0,.25)';
-  for (let y = FLOOR - 58; y < FLOOR; y += 5) {
-    ctx.beginPath();
-    ctx.moveTo(377, y);
-    ctx.lineTo(400, y);
-    ctx.stroke();
-  }
-  // rack de barres
-  ctx.fillStyle = '#3a3d42';
-  ctx.fillRect(26, FLOOR + 8, 64, 30);
-  for (let k = 0; k < 4; k++) {
-    ctx.fillStyle = MATERIAL_COLORS[f.material];
-    ctx.fillRect(29, FLOOR + 12 + k * 6.5, 58, 3);
-    ctx.fillStyle = 'rgba(0,0,0,.3)';
-    ctx.fillRect(29, FLOOR + 14.5 + k * 6.5, 58, 0.6);
-  }
-  // numéro d'usine
-  if (S.factories.length > 1) {
-    ctx.fillStyle = 'rgba(0,0,0,.55)';
-    rr(6, 64, 44, 13, 2);
-    ctx.fill();
-    ctx.fillStyle = '#ffb02e';
-    ctx.font = '8px "Share Tech Mono", monospace';
-    ctx.fillText(`USINE ${fi + 1}`, 28, 71);
-  }
-}
-
-function mix(a: number[], b: number[], k: number): string {
-  return `rgb(${Math.round(a[0] + (b[0] - a[0]) * k)},${Math.round(a[1] + (b[1] - a[1]) * k)},${Math.round(a[2] + (b[2] - a[2]) * k)})`;
-}
-
-/** Emplacement libre d'une chaîne : un poste à acheter. */
-function drawEmptySlot(l: number, st: number): void {
-  ctx.strokeStyle = 'rgba(255,255,255,.09)';
-  ctx.lineWidth = 1;
-  ctx.setLineDash([3, 3]);
-  ctx.strokeRect(SX[st] - 20, LY[l] + 2, 40, 28);
-  ctx.setLineDash([]);
-}
-
-/** Poste sans titulaire : une silhouette en pointillés à la place de l'ouvrier. */
-function drawVacant(l: number, st: number): void {
-  const x = SX[st] - 24;
-  const y = LY[l] + ROW_BASE;
-  ctx.strokeStyle = 'rgba(255,216,74,.45)';
-  ctx.lineWidth = 0.8;
-  ctx.setLineDash([1.5, 1.5]);
-  ctx.beginPath();
-  ctx.arc(x, y - 18, 2.4, 0, TAU);
-  ctx.stroke();
-  rr(x - 3, y - 15, 6, 9, 1.5);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(x - 1, y - 6);
-  ctx.lineTo(x - 1, y);
-  ctx.moveTo(x + 1, y - 6);
-  ctx.lineTo(x + 1, y);
-  ctx.stroke();
-  ctx.setLineDash([]);
-}
-
-function drawMachine(f: Factory, fi: number, l: number, s: number): void {
-  const u = f.lines[l].slots[s]!;
-  const x = SX[s];
-  const y = LY[l];
-  const t = u.tier;
-  const i = l;
-  const busy = u.busy && !u.broken && u.service <= 0;
-  const T = O.T;
-  const sw = busy ? Math.sin(T * 14 + i) : 0;
-  if (t === 0) {
-    ctx.fillStyle = '#6b4a2b';
-    ctx.fillRect(x - 20, y + 8, 40, 5);
-    ctx.fillStyle = '#4f361f';
-    ctx.fillRect(x - 18, y + 13, 3, 20);
-    ctx.fillRect(x + 15, y + 13, 3, 20);
-    ctx.fillStyle = 'rgba(255,255,255,.12)';
-    ctx.fillRect(x - 20, y + 8, 40, 1);
-    if (s === 0) {
-      ctx.save();
-      ctx.translate(x + 4, y + 2);
-      ctx.rotate(sw * 0.12);
-      ctx.fillStyle = '#b8bfc7';
-      ctx.fillRect(-10, 0, 18, 3);
-      ctx.fillStyle = '#6b4a2b';
-      ctx.fillRect(8, -1, 5, 5);
-      ctx.restore();
-    } else if (s === 1) {
-      ctx.fillStyle = '#4a4e55';
-      ctx.fillRect(x - 5, y + 2, 12, 6);
-      ctx.save();
-      ctx.translate(x + 10, y - 6);
-      ctx.rotate(-0.6 + (busy ? Math.abs(sw) : 0) * 1.1);
-      ctx.fillStyle = '#6b4a2b';
-      ctx.fillRect(-1, 0, 2, 12);
-      ctx.fillStyle = '#5b6068';
-      ctx.fillRect(-4, 10, 8, 4);
-      ctx.restore();
-    } else if (s === 2) {
-      ctx.fillStyle = '#4a4e55';
-      ctx.fillRect(x - 6, y + 1, 8, 7);
-      ctx.save();
-      ctx.translate(x - 2, y - 2);
-      ctx.rotate(busy ? T * 4 : 0);
-      ctx.fillStyle = '#b8bfc7';
-      ctx.fillRect(-9, -1, 18, 2);
-      ctx.restore();
-    } else {
-      ctx.fillStyle = '#b8bfc7';
-      ctx.fillRect(x - 8, y + 3, 14, 2);
-      ctx.fillRect(x - 8, y, 2, 5);
-      ctx.fillRect(x + 4, y, 2, 5);
-    }
-  } else if (t === 1) {
-    const body = '#5d7a6c';
-    const dark = '#3f5449';
-    ctx.fillStyle = 'rgba(0,0,0,.3)';
-    ctx.fillRect(x - 20, y + 31, 40, 3);
-    if (s === 0) {
-      ctx.fillStyle = body;
-      rr(x - 18, y - 6, 30, 37, 3);
-      ctx.fill();
-      ctx.fillStyle = dark;
-      ctx.beginPath();
-      ctx.arc(x - 3, y + 2, 8, 0, TAU);
-      ctx.fill();
-      ctx.strokeStyle = '#d0d6dc';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(x - 3, y + 2, 8, busy ? T * 12 : 0, (busy ? T * 12 : 0) + 5);
-      ctx.stroke();
-      ctx.fillStyle = '#c8ced5';
-      ctx.fillRect(x - 14, y + 12, 24, 2);
-    } else if (s === 1) {
-      const ram = busy ? Math.max(0, Math.sin(T * 9 + i)) * 7 : 0;
-      ctx.fillStyle = body;
-      ctx.fillRect(x - 17, y - 4, 5, 36);
-      ctx.fillRect(x + 9, y - 4, 5, 36);
-      ctx.fillRect(x - 17, y - 6, 31, 6);
-      ctx.fillStyle = '#c9ced5';
-      ctx.fillRect(x - 3, y - 4, 4, 4 + ram);
-      ctx.fillStyle = dark;
-      ctx.fillRect(x - 9, y + ram, 16, 5);
-      ctx.fillStyle = '#3a3d42';
-      ctx.fillRect(x - 11, y + 16, 20, 5);
-      ctx.fillStyle = '#f2b705';
-      for (let k = 0; k < 4; k++) ctx.fillRect(x - 17 + k * 8, y - 6, 4, 2);
-    } else if (s === 2) {
-      ctx.fillStyle = body;
-      ctx.fillRect(x + 4, y - 8, 6, 40);
-      ctx.fillRect(x - 12, y - 8, 22, 8);
-      ctx.fillStyle = dark;
-      ctx.fillRect(x - 6, y, 6, 8 + (busy ? Math.sin(T * 6) * 2 : 0));
-      ctx.fillStyle = '#3a3d42';
-      ctx.fillRect(x - 14, y + 16, 24, 5);
-      ctx.strokeStyle = '#c9ced5';
-      ctx.lineWidth = 1;
-      const a = busy ? T * 20 : 0;
-      ctx.beginPath();
-      ctx.moveTo(x - 3 + Math.cos(a) * 3, y + 10);
-      ctx.lineTo(x - 3 - Math.cos(a) * 3, y + 10);
-      ctx.stroke();
-    } else {
-      ctx.fillStyle = body;
-      rr(x - 18, y + 6, 34, 25, 2);
-      ctx.fill();
-      ctx.fillStyle = '#111';
-      ctx.fillRect(x - 14, y - 8, 16, 12);
-      ctx.fillStyle = busy ? `rgba(90,255,150,${0.6 + 0.3 * Math.sin(T * 8)})` : 'rgba(90,255,150,.2)';
-      ctx.fillRect(x - 12, y - 6, 12, 8);
-      ctx.fillStyle = '#c9ced5';
-      ctx.fillRect(x + 4, y + 2, 8, 3);
-    }
-  } else if (t === 2) {
-    // Semi-automatique : carter orange, pupitre, voyant
-    ctx.fillStyle = 'rgba(0,0,0,.35)';
-    ctx.fillRect(x - 21, y + 31, 42, 3);
-    ctx.fillStyle = '#c4621f';
-    rr(x - 20, y - 8, 36, 39, 3);
-    ctx.fill();
-    ctx.fillStyle = '#8a3f12';
-    ctx.fillRect(x - 20, y + 22, 36, 9);
-    ctx.fillStyle = '#1b1d21';
-    rr(x - 15, y - 3, 22, 16, 2);
-    ctx.fill();
-    // fenêtre d'usinage
-    ctx.fillStyle = busy ? 'rgba(255,190,90,.35)' : 'rgba(120,140,160,.2)';
-    ctx.fillRect(x - 13, y - 1, 18, 12);
-    if (busy) {
-      const k = (T * 3 + i) % 1;
-      if (s === 1) ctx.fillStyle = '#d9dde2', ctx.fillRect(x - 6, y - 1 + Math.abs(Math.sin(T * 10)) * 5, 4, 4);
-      else if (s === 2) ctx.fillStyle = '#d9dde2', ctx.fillRect(x - 5 + Math.sin(T * 30) * 1, y, 2, 9);
-      else ctx.fillStyle = '#d9dde2', ctx.fillRect(x - 12 + k * 14, y + 6, 3, 2);
-    }
-    ctx.fillStyle = '#2a2d32';
-    ctx.fillRect(x + 8, y - 6, 6, 10);
-    glowDot(x + 11, y - 3, 1.3, busy ? '90,255,150' : '255,176,46', busy ? 0.9 : 0.6);
-    ctx.fillStyle = '#e8e2d0';
-    ctx.fillRect(x - 18, y + 24, 10, 3);
-  } else if (t === 3) {
-    // Robotisé : bras articulé jaune sur socle
-    ctx.fillStyle = 'rgba(0,0,0,.35)';
-    ctx.fillRect(x - 20, y + 31, 40, 3);
-    ctx.fillStyle = '#3a3d42';
-    ctx.fillRect(x - 18, y + 16, 34, 15);
-    ctx.fillStyle = '#f2b705';
-    for (let k = 0; k < 5; k++) ctx.fillRect(x - 18 + k * 7, y + 16, 3.5, 2);
-    ctx.fillStyle = '#25282d';
-    ctx.fillRect(x - 6, y + 8, 12, 9);
-    const a1 = -1.2 + (busy ? Math.sin(T * 6 + i * 1.3) * 0.5 : 0);
-    const a2 = 1.4 + (busy ? Math.cos(T * 6 + i * 1.3) * 0.6 : 0);
-    const bx = x;
-    const by = y + 8;
-    const ex = bx + Math.cos(a1) * 16;
-    const ey = by + Math.sin(a1) * 16;
-    const hx = ex + Math.cos(a1 + a2) * 13;
-    const hy = ey + Math.sin(a1 + a2) * 13;
-    ctx.strokeStyle = '#e8a90a';
-    ctx.lineWidth = 4;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(bx, by);
-    ctx.lineTo(ex, ey);
-    ctx.lineTo(hx, hy);
-    ctx.stroke();
-    ctx.lineCap = 'butt';
-    ctx.fillStyle = '#2b2e33';
-    ctx.beginPath();
-    ctx.arc(bx, by, 3, 0, TAU);
-    ctx.arc(ex, ey, 2.5, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = '#9aa1aa';
-    ctx.fillRect(hx - 2, hy - 1, 4, 4);
-    if (busy && s === 1 && Math.sin(T * 6 + i * 1.3) > 0.95) glowDot(hx, hy + 3, 1.5, '255,200,120', 0.8);
-    glowDot(x + 12, y + 20, 1, busy ? '90,255,150' : '255,176,46', 0.8);
-  } else {
-    // Usine noire : carter intégré, bandeau de LED
-    ctx.fillStyle = '#17191d';
-    rr(x - 21, y - 6, 42, 37, 2);
-    ctx.fill();
-    ctx.strokeStyle = '#262a30';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x - 20.5, y - 5.5, 41, 36);
-    const n = 6;
-    for (let k = 0; k < n; k++) {
-      const on = busy && ((T * 8 + k + i) % n) < 3;
-      glowDot(x - 15 + k * 6, y - 1, 1, '79,216,255', on ? 0.95 : 0.25);
-    }
-    ctx.fillStyle = busy ? 'rgba(79,216,255,.12)' : 'rgba(79,216,255,.04)';
-    ctx.fillRect(x - 17, y + 4, 34, 14);
-    if (i < MAX_UNITS - 1 || s < 3) {
-      ctx.fillStyle = '#0d0e10';
-      ctx.fillRect(x + 21, y + 10, 18, 4);
-    }
-  }
-  // outillage : jauge jaune sous la machine (50 niveaux), commune à toutes les machines identiques
-  const tool = S.tooling[t]?.[s] ?? 0;
-  if (tool > 0) {
-    ctx.fillStyle = 'rgba(0,0,0,.5)';
-    ctx.fillRect(x - 16, y + 30, 32, 2);
-    ctx.fillStyle = '#f2b705';
-    ctx.fillRect(x - 16, y + 30, 32 * Math.min(1, tool / TOOL_MAX), 2);
-  }
-  // pièce en cours
-  if (busy && t < 4) {
-    const m = f.material;
-    if (s === 0) lopin(x, y + 5, m);
-    else if (s === 1) lopin(x + 1, y + (t ? 14 : 5), m);
-    else piece(x - 1, y + (t ? 13 : 4), 3.6, m, s === 2 ? T * 3 : 0);
-  } else if (busy) {
-    piece(x, y + 11, 3, f.material, T * 5);
-  }
-  // progression
-  if (busy && t < 3) {
-    ctx.fillStyle = '#16181b';
-    ctx.fillRect(x - 16, y - 12, 32, 2);
-    ctx.fillStyle = '#f2b705';
-    ctx.fillRect(x - 16, y - 12, 32 * clamp(u.prog / machineCycle(S, f.material, t, s), 0, 1), 2);
-  }
-  // machine qui attend la promotion de son ouvrier
-  if (t > 0 && t < 3 && u.post >= 0) {
-    const w = S.workers.find((k) => k.id === u.post);
-    if (w && w.level < TIER_OPERATOR_LEVEL[t]) glowDot(x + 15, y - 6, 1.8, '255,176,46', Math.sin(T * 4) > 0 ? 0.95 : 0.3);
-  }
-  // usure (visible avec le superviseur) ; sinon fumée quand une machine fatigue
-  if (t > 0 && !u.broken && u.service <= 0) {
-    if (S.roles.supervisor && u.wear > 0.25) {
-      ctx.fillStyle = '#16181b';
-      ctx.fillRect(x + 19, y + 2, 2.5, 26);
-      ctx.fillStyle = u.wear > 0.7 ? '#ff5a4a' : u.wear > 0.5 ? '#ffb02e' : '#57d987';
-      ctx.fillRect(x + 19, y + 2 + 26 * (1 - u.wear), 2.5, 26 * u.wear);
-    }
-    if (u.wear > 0.6 && busy && Math.random() < 0.04 * (u.wear - 0.5) * 4 && !O.reduced) {
-      smoke(hallX(fi) + x + 8, hallY(fi) + y - 4, 'rgba(70,70,74,.45)', 2.2, 1.1);
-    }
-  }
-  if (u.broken) {
-    const on = Math.sin(T * 8) > 0;
-    glowDot(x + 14, y - 4, 2.5, on ? '255,59,43' : '90,21,16', on ? 1 : 0.8);
-    if (Math.random() < 0.12 && !O.reduced) smoke(hallX(fi) + x, hallY(fi) + y);
-  }
-  if (u.service > 0) {
-    ctx.fillStyle = '#ffb02e';
-    ctx.font = '7px "Share Tech Mono", monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(`${u.serviceKind === 'repair' ? 'réparation' : 'révision'} ${Math.ceil(u.service)} s`, x, y - 16);
-    glowDot(x - 14, y - 4, 1.8, '255,176,46', Math.sin(T * 6) > 0 ? 1 : 0.3);
-  }
-  if (O.hover && O.hover.hall === fi && O.hover.line === l && O.hover.station === s) {
-    ctx.strokeStyle = '#ffd84a';
-    ctx.lineWidth = 1.2;
-    ctx.setLineDash([3, 2]);
-    ctx.strokeRect(x - 34, y - 14, 58, 52);
-    ctx.setLineDash([]);
-  }
-}
-
-const hallX = (i: number) => hallOrigin(i, S.factories.length).x;
-const hallY = (i: number) => hallOrigin(i, S.factories.length).y;
-
-/** Abscisse de la pile devant le poste st (entre st − 1 et st). */
-const pileX = (st: number) => SX[st] - STEP_X / 2 - 2;
-const rowY = (l: number) => LY[Math.max(0, Math.min(LY.length - 1, l))] + ROW_BASE;
-
-function workerXY(w: Worker): { x: number; y: number; moving: boolean; carrying: boolean } {
-  if (w.kind === 'crank') return { x: posX(-1), y: rowY(w.line), moving: false, carrying: false };
-  const home = w.kind === 'post' ? w.line : w.tl;
-  if (w.state === 'carry' && w.carryTo >= 0) {
-    const k = clamp(1 - w.timer / CARRY_TIME, 0, 1);
-    const from = w.kind === 'post' ? w.station : w.last;
-    const x0 = posX(Math.max(0, from));
-    const x1 = pileX(w.carryTo) + 4;
-    const y0 = rowY(w.kind === 'post' ? w.line : w.carryLine);
-    const y1 = rowY(w.carryLine);
-    // aller puis retour : la pièce est déposée à mi-parcours
-    const go = k < 0.5 ? k * 2 : (1 - k) * 2;
-    return { x: x0 + (x1 - x0) * go, y: y0 + (y1 - y0) * go, moving: true, carrying: k < 0.5 };
-  }
-  let pos = w.pos;
-  let moving = false;
-  if (w.state === 'walk' && w.walkTotal > 0) {
-    const target = w.kind === 'post' ? w.station : w.ts;
-    pos = target - (target - w.from) * (w.timer / w.walkTotal);
-    moving = true;
-  }
-  if (w.kind === 'poly' && home < 0) return { x: posX(pos), y: FLOOR + 22, moving, carrying: false };
-  return { x: posX(pos), y: rowY(home), moving, carrying: false };
-}
-
-function drawWorker(w: Worker, idx: number, dt: number): void {
-  if (w.state === 'train') return;
-  const p = workerXY(w);
-  let r = WPOS.get(w.id);
-  if (!r) {
-    r = { x: p.x, y: p.y, anim: Math.random() * 6 };
-    WPOS.set(w.id, r);
-  }
-  const idleOff = w.kind === 'poly' && w.state === 'idle' ? ((idx % 5) - 2) * 6 : 0;
-  r.x = p.x + idleOff;
-  r.y += (p.y - r.y) * (1 - Math.exp(-dt * 10));
-  r.anim += dt * 6 * (O.rev > 0.5 ? 1.8 : 1);
-  const x = r.x;
-  const y = r.y;
-  const moving = p.moving || Math.abs(p.y - r.y) > 1;
-  const step = moving ? Math.sin(r.anim * 2) * 1.6 : 0;
-  ctx.fillStyle = 'rgba(0,0,0,.28)';
-  ctx.beginPath();
-  ctx.ellipse(x, y + 0.5, 4, 1.2, 0, 0, TAU);
-  ctx.fill();
-  ctx.strokeStyle = '#23262b';
-  ctx.lineWidth = 1.6;
-  ctx.beginPath();
-  ctx.moveTo(x - 1, y - 7);
-  ctx.lineTo(x - 1 + step, y);
-  ctx.moveTo(x + 1, y - 7);
-  ctx.lineTo(x + 1 - step, y);
-  ctx.stroke();
-  // blouse : couleur du niveau ; les polyvalents portent un gilet rayé
-  const coat = ['#7a5c3e', '#7a5c3e', '#2f5fa8', '#c4621f', '#2b8a5a'][w.level];
-  ctx.fillStyle = coat;
-  rr(x - 3, y - 15, 6, 9, 1.5);
-  ctx.fill();
-  if (w.kind === 'poly') {
-    ctx.fillStyle = '#f2b705';
-    ctx.fillRect(x - 3, y - 13, 6, 1);
-    ctx.fillRect(x - 3, y - 10, 6, 1);
-  } else if (w.level >= 2) {
-    ctx.fillStyle = 'rgba(255,255,255,.8)';
-    ctx.fillRect(x - 3, y - 11, 6, 0.8);
-  }
-  ctx.strokeStyle = '#e7b892';
-  ctx.lineWidth = 1.3;
-  let sw = w.state === 'work' ? Math.sin(r.anim * 2.4) * 3 : 0;
-  if (w.kind === 'crank' && w.state === 'work') sw = Math.sin(O.T * 6) * 3;
-  ctx.beginPath();
-  ctx.moveTo(x + 2, y - 13);
-  ctx.lineTo(x + 6, y - 10 + sw);
-  ctx.stroke();
-  ctx.fillStyle = '#e7b892';
-  ctx.beginPath();
-  ctx.arc(x, y - 18, 2.3, 0, TAU);
-  ctx.fill();
-  ctx.fillStyle = w.level >= 2 ? '#f2b705' : '#5a4632';
-  if (w.name === 'Marcel') ctx.fillStyle = '#9aa1aa';
-  ctx.beginPath();
-  ctx.arc(x, y - 18.6, 2.6, Math.PI, 0);
-  ctx.fill();
-  ctx.fillRect(x - 3, y - 19, 6.6, 0.8);
-  // formations au niveau : de petits points au-dessus de la tête
-  if (w.trainings > 0 && w.kind !== 'crank') {
-    for (let k = 0; k < w.trainings; k++) {
-      ctx.fillStyle = '#ffd84a';
-      ctx.fillRect(x - 5 + k * 2.2, y - 23.5, 1.4, 1.4);
-    }
-  }
-  if (p.carrying) {
-    const f = S.factories[w.factory];
-    if (w.carryTo === 1) lopin(x + 5, y - 10, f.material);
-    else piece(x + 5, y - 10, 2.6, f.material, 0);
-  }
-  // fatigue visible : une goutte de sueur au-dessus des ouvriers épuisés
-  if (S.act >= 2 && w.morale < 0.45) {
-    const bob = O.reduced ? 0 : Math.sin(r.anim) * 0.8;
-    ctx.fillStyle = '#7fc4ff';
-    ctx.beginPath();
-    ctx.moveTo(x + 4, y - 28 + bob);
-    ctx.quadraticCurveTo(x + 6.5, y - 24 + bob, x + 4, y - 23 + bob);
-    ctx.quadraticCurveTo(x + 1.5, y - 24 + bob, x + 4, y - 28 + bob);
-    ctx.fill();
-  }
-  if (w.rest > 0) {
-    ctx.fillStyle = 'rgba(200,220,255,.8)';
-    ctx.font = '6px "Share Tech Mono", monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('pause', x, y - 27);
-  }
-  if (w.name === 'Marcel' || (O.hover && O.hover.worker === w.id)) {
-    ctx.fillStyle = 'rgba(255,255,255,.8)';
-    ctx.font = '6px "Chakra Petch", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(w.name, x, y - 27);
-  }
-  if ((O.hover && O.hover.worker === w.id) || hlWorker() === w.id) {
-    ctx.strokeStyle = hlWorker() === w.id ? `rgba(255,216,74,${hlAlpha()})` : '#ffd84a';
-    ctx.lineWidth = hlWorker() === w.id ? 1.4 : 0.8;
-    ctx.beginPath();
-    ctx.ellipse(x, y - 9, 7, 14, 0, 0, TAU);
-    ctx.stroke();
-  }
-}
-
-/** Convoyeur à manivelle d'une chaîne : la bande défile quand l'ouvrier tourne la manivelle. */
-function drawConveyor(line: Line, l: number): void {
-  if (!line.conveyor) return;
-  const active = conveyorActive(S, line);
-  const y = rowY(l) - 1;
-  const x0 = CRANK_X + 6;
-  const x1 = SX[3] + 24;
-  ctx.fillStyle = '#2a2c30';
-  ctx.fillRect(x0, y - 1, x1 - x0, 5);
-  ctx.fillStyle = '#4a4e55';
-  ctx.fillRect(x0, y - 1, x1 - x0, 1);
-  // tasseaux qui défilent
-  const off = active && !O.reduced ? (O.T * 18) % 8 : 0;
-  ctx.fillStyle = active ? '#8a8f97' : '#5a5e65';
-  for (let x = x0 + off; x < x1; x += 8) ctx.fillRect(x, y + 1, 1.2, 2);
-  // pieds
-  ctx.fillStyle = '#1d1f23';
-  for (let x = x0 + 10; x < x1; x += 60) ctx.fillRect(x, y + 4, 2, 4);
-  // manivelle
-  const a = active && !O.reduced ? O.T * 6 : 0.8;
-  ctx.strokeStyle = '#9aa1aa';
-  ctx.lineWidth = 1.4;
-  ctx.beginPath();
-  ctx.arc(CRANK_X, y - 6, 5, 0, TAU);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(CRANK_X, y - 6);
-  ctx.lineTo(CRANK_X + Math.cos(a) * 5, y - 6 + Math.sin(a) * 5);
-  ctx.stroke();
-  ctx.fillStyle = '#c4621f';
-  ctx.fillRect(CRANK_X + Math.cos(a) * 5 - 1, y - 7 + Math.sin(a) * 5, 2.5, 2.5);
-  ctx.fillStyle = '#3a3d42';
-  ctx.fillRect(CRANK_X - 1.5, y - 6, 3, 10);
-  if (line.crank < 0 && crankUseful(line)) {
-    // personne à la manivelle : silhouette en pointillés
-    ctx.save();
-    ctx.translate(posX(-1) - (SX[0] - 24), 0);
-    drawVacant(l, 0);
-    ctx.restore();
-  }
-}
-
-function drawBuffers(f: Factory, fi: number): void {
-  const m = f.material;
-  f.lines.forEach((line, l) => {
-    const base = rowY(l) - 3;
-    for (let s = 1; s < 4; s++) {
-      const n = line.buf[s];
-      if (n <= 0) continue;
-      const x = pileX(s);
-      for (let k = 0; k < Math.min(n, BUFFER_CAP); k++) {
-        const cx = x - 6 + (k % 3) * 6;
-        const cy = base - Math.floor(k / 3) * 4.5;
-        if (s === 1) lopin(cx, cy, m);
-        else piece(cx, cy, 2.7, m, 0);
-      }
-      if (n >= BUFFER_CAP) glowDot(x + 9, base - 10, 1.4, '255,90,74', 0.9);
-    }
-  });
-  // caisse de produits finis
-  const x = 330;
-  const y = FLOOR + 10;
-  ctx.fillStyle = '#8a6440';
-  ctx.fillRect(x - 14, y, 28, 16);
-  ctx.strokeStyle = '#5a3f24';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(x - 13.5, y + 0.5, 27, 15);
-  ctx.beginPath();
-  ctx.moveTo(x - 14, y + 8);
-  ctx.lineTo(x + 14, y + 8);
-  ctx.stroke();
-  const n = Math.min(S.stock[m], 6);
-  for (let k = 0; k < n; k++) piece(x - 9 + k * 3.6, y - 2, 2.4, m, k);
-  if (fi === 0) {
-    ctx.fillStyle = '#d8d2c2';
-    ctx.font = '600 7px "Share Tech Mono", monospace';
-    ctx.textAlign = 'right';
-    const total = S.stock.reduce((a, b) => a + b, 0);
-    ctx.fillText(`${total} prêts`, x - 18, y + 9);
-  }
-}
-
-/** Rapport du contremaître : cadence de chaque poste, goulot de chaque chaîne. */
-function drawOverlay(f: Factory, fi: number): void {
-  if (!S.roles.foreman) return;
-  const est = estimateFactory(S, fi);
-  ctx.font = '600 7px "Share Tech Mono", monospace';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  f.lines.forEach((line, l) => {
-    const b = est.lineBottleneck[l];
-    line.slots.forEach((m, s) => {
-      if (!m) return;
-      const x = SX[s];
-      const y = LY[l] - 19;
-      const r = est.rate[l][s];
-      const slow = s === b;
-      ctx.fillStyle = 'rgba(10,11,9,.82)';
-      rr(x - 17, y - 5, 34, 10, 2);
-      ctx.fill();
-      ctx.fillStyle = r <= 0 ? '#8a8f97' : slow ? '#ff6b5a' : '#ffb02e';
-      ctx.fillText(r <= 0 ? 'arrêt' : `${r.toFixed(2).replace('.', ',')}/s`, x, y + 0.5);
-    });
-  });
-}
-
-function drawRoles(): void {
-  // L'encadrement se tient près de la porte du premier hall.
-  const order: [keyof GameState['roles'], string][] = [
-    ['foreman', '#e9ecef'], ['supervisor', '#d0e4ff'], ['hr', '#ffd0e0'], ['methods', '#ffd8a8'], ['logistics', '#ffe6a8'],
-    ['sales', '#c8f0d0'], ['controller', '#e0d0ff'],
-  ];
-  let k = 0;
-  for (const [id, col] of order) {
-    if (!S.roles[id]) continue;
-    const x = 368 - k * 9;
-    const y = HALL_H - 6;
-    ctx.fillStyle = col;
-    rr(x - 3, y - 15, 6, 9, 1.5);
-    ctx.fill();
-    ctx.fillStyle = '#e7b892';
-    ctx.beginPath();
-    ctx.arc(x, y - 18, 2.3, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = '#c9a46a';
-    ctx.fillRect(x - 7, y - 13, 4, 5);
-    ctx.strokeStyle = '#23262b';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(x - 1, y - 7);
-    ctx.lineTo(x - 1, y);
-    ctx.moveTo(x + 1, y - 7);
-    ctx.lineTo(x + 1, y);
-    ctx.stroke();
-    k++;
-  }
-}
-
-/** Élément désigné depuis le panneau, découpé une fois par image. */
-function hlParts(): { kind: string; n: number[] } | null {
-  if (!O.highlight) return null;
-  const [kind, ...rest] = O.highlight.split(':');
-  return { kind, n: rest.map(Number) };
-}
-
-function hlAlpha(): number {
-  return O.reduced ? 0.9 : 0.55 + 0.45 * Math.sin(O.T * 7);
-}
-
-/** Cadre clignotant autour de ce que le bouton survolé va acheter ou modifier. */
-function drawHighlight(f: Factory, fi: number): void {
-  const h = hlParts();
-  if (!h) return;
-  ctx.save();
-  ctx.strokeStyle = `rgba(255,216,74,${hlAlpha()})`;
-  ctx.lineWidth = 2;
-  const box = (x: number, y: number, w: number, hh: number, dash = false) => {
-    ctx.setLineDash(dash ? [4, 3] : []);
-    rr(x, y, w, hh, 3);
-    ctx.stroke();
-  };
-  const [a, b, c] = h.n;
-  if ((h.kind === 'u' || h.kind === 'm') && a === fi) {
-    box(SX[c] - 36, LY[b] - 14, 60, 54, h.kind === 'u');
-    if (h.kind === 'u') {
-      ctx.fillStyle = `rgba(255,216,74,${hlAlpha()})`;
-      ctx.font = '700 16px "Share Tech Mono", monospace';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('+', SX[c], LY[b] + 14);
-    }
-  } else if (h.kind === 'c' && a === fi) {
-    box(CRANK_X - 30, LY[b] + ROW_BASE - 34, SX[3] + 30 - (CRANK_X - 30), 44);
-  } else if (h.kind === 't') {
-    f.lines.forEach((line, l) => {
-      const m = line.slots[b];
-      if (m && m.tier === a) box(SX[b] - 22, LY[l] - 12, 44, 46);
-    });
-  }
-  ctx.restore();
-}
-
-/** Le hall concerné par l'élément désigné (vue extérieure). */
-function hlFactory(): number {
-  const h = hlParts();
-  return h && (h.kind === 'u' || h.kind === 'm' || h.kind === 'c') ? h.n[0] : -1;
-}
-
-function hlWorker(): number {
-  const h = hlParts();
-  return h && h.kind === 'w' ? h.n[0] : -1;
 }
 
 // ------------------------------------------------------------------ Gains qui montent de la caisse
@@ -1011,10 +145,12 @@ export function saleFloat(s: GameState, fi: number, text: string, col = '#ffd84a
 }
 
 function drawFloats(dt: number): void {
-  ctx.font = '700 11px "Share Tech Mono", monospace';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.lineWidth = 3;
+  const u = R.ui;
+  const size = Math.max(11, (13 * (R.O.dpr ?? 1)) / R.zoom);
+  u.font = `700 ${size}px "Share Tech Mono", monospace`;
+  u.textAlign = 'center';
+  u.textBaseline = 'middle';
+  u.lineWidth = size * 0.28;
   for (let i = FLOATS.length - 1; i >= 0; i--) {
     const p = FLOATS[i];
     p.life -= dt;
@@ -1022,492 +158,14 @@ function drawFloats(dt: number): void {
       FLOATS.splice(i, 1);
       continue;
     }
-    if (!O.reduced) p.y -= dt * 16;
-    ctx.globalAlpha = Math.min(1, p.life / 0.6);
-    ctx.strokeStyle = 'rgba(0,0,0,.7)';
-    ctx.strokeText(p.text, p.x, p.y);
-    ctx.fillStyle = p.col;
-    ctx.fillText(p.text, p.x, p.y);
+    if (!R.O.reduced) p.y -= dt * 16;
+    u.globalAlpha = Math.min(1, p.life / 0.6);
+    u.strokeStyle = 'rgba(0,0,0,.7)';
+    u.strokeText(p.text, p.x, p.y);
+    u.fillStyle = p.col;
+    u.fillText(p.text, p.x, p.y);
   }
-  ctx.globalAlpha = 1;
-}
-
-// ------------------------------------------------------------------ Équipe de nuit
-
-/** Gardiens de l'équipe de nuit (1 à 3 selon le rendement), visibles quand il fait nuit. */
-function guards(): number {
-  if (S.act < 2 || S.night.rate <= 0 || ambient(S.t) > 0.35) return 0;
-  return 1 + Math.floor(S.night.rate / 20);
-}
-
-function guardX(fi: number, k: number): number {
-  const ph = O.reduced ? 0.3 + k * 0.3 : Math.sin(O.T * 0.25 + fi * 1.7 + k * 2.1) * 0.5 + 0.5;
-  return 50 + ph * 300;
-}
-
-function drawGuards(fi: number): void {
-  const n = guards();
-  for (let k = 0; k < n; k++) {
-    const x = guardX(fi, k);
-    const y = HALL_H - 8;
-    const dir = O.reduced ? 1 : Math.cos(O.T * 0.25 + fi * 1.7 + k * 2.1) >= 0 ? 1 : -1;
-    // faisceau de la lampe
-    const g = ctx.createRadialGradient(x + dir * 6, y - 10, 1, x + dir * 30, y - 6, 34);
-    g.addColorStop(0, 'rgba(255,240,190,.45)');
-    g.addColorStop(1, 'rgba(255,240,190,0)');
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.moveTo(x + dir * 5, y - 11);
-    ctx.lineTo(x + dir * 46, y - 26);
-    ctx.lineTo(x + dir * 46, y + 2);
-    ctx.fill();
-    glowDot(x + dir * 5, y - 11, 1.3, '255,240,190', 0.9);
-    // silhouette : blouson bleu nuit, casquette
-    ctx.strokeStyle = '#23262b';
-    ctx.lineWidth = 1.6;
-    const st = O.reduced ? 0 : Math.sin(O.T * 5 + k) * 1.4;
-    ctx.beginPath();
-    ctx.moveTo(x - 1, y - 7);
-    ctx.lineTo(x - 1 + st, y);
-    ctx.moveTo(x + 1, y - 7);
-    ctx.lineTo(x + 1 - st, y);
-    ctx.stroke();
-    ctx.fillStyle = '#1f2f4f';
-    rr(x - 3, y - 15, 6, 9, 1.5);
-    ctx.fill();
-    ctx.fillStyle = '#e7b892';
-    ctx.beginPath();
-    ctx.arc(x, y - 18, 2.3, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = '#16213a';
-    ctx.fillRect(x - 3, y - 21, 6.5, 1.8);
-  }
-}
-
-function drawInterior(f: Factory, fi: number, dt: number): void {
-  drawRoom(f, fi);
-  f.lines.forEach((line, l) => {
-    drawConveyor(line, l);
-    line.slots.forEach((m, s) => {
-      if (!m) drawEmptySlot(l, s);
-      else {
-        drawMachine(f, fi, l, s);
-        if (m.tier < 3 && m.post < 0) drawVacant(l, s);
-      }
-    });
-  });
-  drawBuffers(f, fi);
-  drawHighlight(f, fi);
-  if (fi === 0) drawRoles();
-  const ws = S.workers.filter((w) => w.factory === fi);
-  ws.sort((a, b) => (WPOS.get(a.id)?.y ?? 0) - (WPOS.get(b.id)?.y ?? 0));
-  ws.forEach((w, k) => drawWorker(w, k, dt));
-  drawOverlay(f, fi);
-  // pénombre de nuit
-  const amb = ambient(S.t);
-  const style = hallStyle(f);
-  const lights = lightLevel(style);
-  const dark = style === 'black' ? 0.55 : (1 - amb) * 0.18 + (1 - lights) * 0.6;
-  if (dark > 0.01) {
-    ctx.fillStyle = `rgba(4,6,14,${dark})`;
-    ctx.fillRect(0, 0, HALL_W, HALL_H);
-  }
-  // la ronde passe par-dessus la pénombre
-  drawGuards(fi);
-}
-
-// ------------------------------------------------------------------ Extérieur
-
-function drawExterior(f: Factory, ci: number, panels: number): void {
-  const style = hallStyle(f);
-  const amb = ambient(S.t);
-  const lights = lightLevel(style);
-  const wall = style === 'black' ? '#15171b' : style === 'forge' ? '#7a4a36' : '#8b939c';
-  // toit en sheds
-  ctx.fillStyle = style === 'black' ? '#0c0d10' : '#4b5259';
-  for (let k = 0; k < 5; k++) {
-    ctx.beginPath();
-    ctx.moveTo(k * 80, 60);
-    ctx.lineTo(k * 80 + 60, 20);
-    ctx.lineTo(k * 80 + 80, 20);
-    ctx.lineTo(k * 80 + 80, 60);
-    ctx.fill();
-    ctx.fillStyle = style === 'black' ? '#10141a' : mix([60, 70, 90], [170, 205, 230], amb);
-    ctx.beginPath();
-    ctx.moveTo(k * 80 + 62, 22);
-    ctx.lineTo(k * 80 + 78, 22);
-    ctx.lineTo(k * 80 + 78, 58);
-    ctx.fill();
-    ctx.fillStyle = style === 'black' ? '#0c0d10' : '#4b5259';
-  }
-  for (let k = 0; k < panels; k++) {
-    const slot = k % 12;
-    const sx = Math.floor(slot / 2.4) * 80 + (slot % 2) * 28 + 6;
-    const t = (sx % 80) / 62;
-    solarPanel(sx, 60 - t * 40 * 0.9 - 6, 24, 6);
-  }
-  ctx.fillStyle = wall;
-  ctx.fillRect(0, 60, HALL_W, FLOOR - 40);
-  ctx.strokeStyle = 'rgba(0,0,0,.18)';
-  ctx.lineWidth = 2;
-  for (let x = 6; x < HALL_W; x += 12) {
-    ctx.beginPath();
-    ctx.moveTo(x, 62);
-    ctx.lineTo(x, FLOOR + 20);
-    ctx.stroke();
-  }
-  // fenêtres éclairées
-  const working = f.lines.some((l) => l.slots.some((m) => m && m.busy));
-  for (let k = 0; k < 6; k++) {
-    const x = 24 + k * 62;
-    const lit = (1 - amb) * 0.8 * lights * (working ? 1 : 0.4);
-    ctx.fillStyle = style === 'black' ? '#0a0b0d' : `rgba(${Math.round(60 + 195 * lit)},${Math.round(70 + 150 * lit)},${Math.round(90 + 40 * lit)},1)`;
-    ctx.fillRect(x, 110, 40, 60);
-    ctx.fillStyle = 'rgba(0,0,0,.4)';
-    ctx.fillRect(x + 19, 110, 2, 60);
-    ctx.fillRect(x, 139, 40, 2);
-    if (style === 'black') glowDot(x + 20, 140, 2, '79,216,255', working ? 0.6 + 0.3 * Math.sin(O.T * 3 + k) : 0.15);
-    else if (lit > 0.3 && glow) {
-      glow.fillStyle = `rgba(255,200,120,${lit * 0.5})`;
-      glow.fillRect(x, 110, 40, 60);
-    }
-  }
-  // ronde de l'équipe de nuit : la lampe passe derrière les fenêtres basses
-  for (let k = 0; k < guards(); k++) glowDot(guardX(ci, k), FLOOR + 6, 2.4, '255,240,190', 0.8);
-  // portail
-  ctx.fillStyle = style === 'black' ? '#1c1f24' : '#5d646d';
-  ctx.fillRect(160, 200, 80, FLOOR + 20 - 200);
-  ctx.strokeStyle = 'rgba(0,0,0,.3)';
-  for (let y = 205; y < FLOOR + 20; y += 7) {
-    ctx.beginPath();
-    ctx.moveTo(160, y);
-    ctx.lineTo(240, y);
-    ctx.stroke();
-  }
-  // bandeau matériau et numéro
-  ctx.fillStyle = MATERIAL_COLORS[f.material];
-  ctx.fillRect(0, 74, HALL_W, 10);
-  ctx.fillStyle = 'rgba(0,0,0,.65)';
-  rr(150, 86, 100, 20, 3);
-  ctx.fill();
-  ctx.fillStyle = '#ffb02e';
-  ctx.font = '14px "Share Tech Mono", monospace';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(`USINE ${ci + 1}`, 200, 96.5);
-  // cheminée et fumée
-  if (style !== 'black') {
-    ctx.fillStyle = '#5a4a40';
-    ctx.fillRect(330, -10, 18, 40);
-    if (working && Math.random() < 0.25 && !O.reduced) smoke(hallX(ci) + 339, hallY(ci) - 12, 'rgba(200,200,205,.35)', 6, 3);
-  }
-  // voyant de panne
-  const broken = f.lines.some((l) => l.slots.some((m) => m && m.broken));
-  if (broken) glowDot(380, 70, 6, '255,59,43', Math.sin(O.T * 8) > 0 ? 1 : 0.3);
-  else glowDot(380, 70, 4, working ? '90,255,150' : '255,176,46', 0.7);
-  if (robotFactory(f)) glowDot(20, 70, 3, '79,216,255', 0.6);
-  // une rangée de fenêtres basses par chaîne équipée
-  f.lines.forEach((l, k) => {
-    const n = l.slots.filter(Boolean).length;
-    for (let j = 0; j < 4; j++) {
-      ctx.fillStyle = j < n ? (l.slots.some((m) => m && m.busy) ? '#ffcf6b' : '#8a7a50') : 'rgba(0,0,0,.35)';
-      ctx.fillRect(16 + j * 9, 196 + k * 12, 6, 7);
-    }
-  });
-  // sol
-  ctx.fillStyle = 'rgba(0,0,0,.25)';
-  ctx.fillRect(-10, FLOOR + 20, HALL_W + 20, 6);
-}
-
-function drawGround(top: number): void {
-  const n = S.factories.length;
-  const b = siteBounds(n);
-  const amb = ambient(S.t);
-  ctx.fillStyle = mix([28, 32, 30], [96, 104, 96], amb);
-  ctx.fillRect(b.x - 3000, top, b.w + 6000, b.h + 3000);
-  ctx.fillStyle = mix([40, 46, 40], [120, 132, 112], amb);
-  ctx.fillRect(b.x - 3000, top, b.w + 6000, 6);
-  // routes entre les rangées
-  const cols = gridCols(n);
-  const rows = Math.ceil(n / cols);
-  ctx.fillStyle = mix([22, 24, 28], [70, 74, 80], amb);
-  for (let r = 0; r < rows; r++) {
-    const y = r * (HALL_H + 90) + HALL_H + 18;
-    ctx.fillRect(b.x - 2000, y, b.w + 4000, 40);
-    ctx.fillStyle = mix([120, 100, 30], [242, 183, 5], amb);
-    for (let x = b.x - 2000; x < b.x + b.w + 2000; x += 40) ctx.fillRect(x, y + 19, 20, 2);
-    ctx.fillStyle = mix([22, 24, 28], [70, 74, 80], amb);
-  }
-}
-
-function drawSky(cw: number, ch: number): void {
-  const amb = ambient(S.t);
-  const g = ctx.createLinearGradient(0, 0, 0, ch);
-  g.addColorStop(0, mix([10, 14, 30], [120, 170, 215], amb));
-  g.addColorStop(1, mix([30, 26, 44], [200, 222, 236], amb));
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, cw, ch);
-  const d = daylight(S.t);
-  if (d > 0.02) {
-    ctx.fillStyle = `rgba(255,236,190,${0.6 * d})`;
-    ctx.beginPath();
-    ctx.arc(cw * 0.82, ch * 0.12, 26, 0, TAU);
-    ctx.fill();
-  }
-}
-
-// ------------------------------------------------------------------ Lointain
-
-const hash = (i: number) => {
-  const x = Math.sin(i * 127.1 + 311.7) * 43758.5453;
-  return x - Math.floor(x);
-};
-
-/** Silhouettes à l'horizon : elles changent avec le marché conquis (parallaxe légère). */
-function drawBackdrop(cw: number, hy: number, cam: Camera): void {
-  const act = Math.min(S.act, 4);
-  if (act < 2) return;
-  const amb = ambient(S.t);
-  const z = Math.min(1.6, cam.zoom);
-  const par = -cam.x * cam.zoom * 0.15;
-  const far = mix([18, 22, 34], [150, 172, 190], amb);
-  const near = mix([14, 18, 26], [118, 136, 150], amb);
-  // collines
-  ctx.fillStyle = far;
-  ctx.beginPath();
-  ctx.moveTo(0, hy);
-  for (let x = 0; x <= cw + 20; x += 20) {
-    const w = (x - par * 0.5) / (180 * z);
-    ctx.lineTo(x, hy - (22 + 18 * Math.sin(w) + 10 * Math.sin(w * 2.3 + 1)) * z);
-  }
-  ctx.lineTo(cw, hy);
-  ctx.fill();
-  const unit = 26 * z;
-  const start = Math.floor(-par / unit) - 2;
-  const count = Math.ceil(cw / unit) + 4;
-  if (act === 2) {
-    // arbres
-    ctx.fillStyle = near;
-    for (let k = 0; k < count; k++) {
-      const i = start + k;
-      if (hash(i) < 0.45) continue;
-      const x = i * unit + par;
-      const h = (10 + 14 * hash(i + 7)) * z;
-      ctx.beginPath();
-      ctx.arc(x, hy - h, h * 0.55, 0, TAU);
-      ctx.fill();
-      ctx.fillRect(x - 1.5 * z, hy - h, 3 * z, h);
-    }
-  } else {
-    // ville (acte III) ou mégapole (acte IV)
-    ctx.fillStyle = near;
-    const maxH = act === 3 ? 46 : 120;
-    for (let k = 0; k < count; k++) {
-      const i = start + k;
-      if (hash(i) < (act === 3 ? 0.5 : 0.2)) continue;
-      const x = i * unit + par;
-      const h = (12 + maxH * Math.pow(hash(i + 3), act === 3 ? 1.6 : 2.2)) * z;
-      const w = unit * (0.6 + 0.35 * hash(i + 11));
-      ctx.fillRect(x, hy - h, w, h);
-      if (amb < 0.5) {
-        ctx.fillStyle = `rgba(255,214,140,${0.5 * (1 - amb * 2)})`;
-        for (let r = 0; r < h / (7 * z) - 1; r++) if (hash(i * 31 + r) > 0.6) ctx.fillRect(x + w * 0.3, hy - h + 4 * z + r * 7 * z, 2 * z, 2 * z);
-        ctx.fillStyle = near;
-      }
-      if (act === 4 && hash(i + 19) > 0.93) {
-        // grue
-        ctx.fillRect(x + w / 2, hy - h - 30 * z, 2 * z, 30 * z);
-        ctx.fillRect(x + w / 2 - 20 * z, hy - h - 30 * z, 40 * z, 2 * z);
-      }
-    }
-    if (act === 3) {
-      // pylônes
-      ctx.strokeStyle = near;
-      ctx.lineWidth = 1;
-      for (let k = 0; k < count; k += 5) {
-        const x = (start + k) * unit + par;
-        ctx.beginPath();
-        ctx.moveTo(x - 6 * z, hy);
-        ctx.lineTo(x, hy - 40 * z);
-        ctx.lineTo(x + 6 * z, hy);
-        ctx.moveTo(x - 8 * z, hy - 32 * z);
-        ctx.lineTo(x + 8 * z, hy - 32 * z);
-        ctx.stroke();
-      }
-    }
-  }
-}
-
-// ------------------------------------------------------------------ Annexe : énergie, cantine
-
-const ROOF_SLOTS = 12;
-
-
-function solarSplit(): { perHall: number[]; ground: number } {
-  const n = S.factories.length;
-  const total = S.energy.solar;
-  const perHall = S.factories.map((_, i) => Math.min(ROOF_SLOTS, Math.floor(total / n) + (i < total % n ? 1 : 0)));
-  const used = perHall.reduce((a, b) => a + b, 0);
-  return { perHall, ground: total - used };
-}
-
-function solarPanel(x: number, y: number, w: number, h: number): void {
-  const d = daylight(S.t);
-  ctx.fillStyle = '#1d2c48';
-  ctx.fillRect(x, y, w, h);
-  ctx.strokeStyle = 'rgba(140,170,220,.45)';
-  ctx.lineWidth = 0.5;
-  for (let k = 1; k < 4; k++) {
-    ctx.beginPath();
-    ctx.moveTo(x + (w * k) / 4, y);
-    ctx.lineTo(x + (w * k) / 4, y + h);
-    ctx.stroke();
-  }
-  ctx.beginPath();
-  ctx.moveTo(x, y + h / 2);
-  ctx.lineTo(x + w, y + h / 2);
-  ctx.stroke();
-  if (d > 0.05) {
-    ctx.fillStyle = `rgba(255,250,220,${0.35 * d})`;
-    ctx.fillRect(x + 1, y + 1, w * 0.35, 1.2);
-  }
-  ctx.fillStyle = '#9aa1aa';
-  ctx.fillRect(x, y + h, w, 1);
-}
-
-/** Toit en coupe au-dessus d'un hall (vue intérieure), avec ses panneaux. */
-function drawRoof(ci: number, panels: number): void {
-  const style = hallStyle(S.factories[ci]);
-  ctx.fillStyle = style === 'black' ? '#0e1013' : '#4b5259';
-  for (let k = 0; k < 5; k++) {
-    ctx.beginPath();
-    ctx.moveTo(k * 80, 0);
-    ctx.lineTo(k * 80 + 62, -ROOF_H);
-    ctx.lineTo(k * 80 + 80, -ROOF_H);
-    ctx.lineTo(k * 80 + 80, 0);
-    ctx.fill();
-  }
-  for (let k = 0; k < panels; k++) {
-    const slot = k % 12;
-    const sx = Math.floor(slot / 2.4) * 80 + (slot % 2) * 28 + 6;
-    const t = (sx % 80) / 62;
-    solarPanel(sx, -t * ROOF_H * 0.9 - 6, 24, 6);
-  }
-}
-
-function drawTurbines(): void {
-  const n = S.factories.length;
-  const total = S.energy.wind;
-  const wf = windFactor(S.t);
-  for (let i = 0; i < total; i++) {
-    const p = turbinePos(i, total, n);
-    const h = 120 - (Math.floor(i / 20) % 2) * 20;
-    ctx.fillStyle = '#d8dde3';
-    ctx.beginPath();
-    ctx.moveTo(p.x - 3, p.y);
-    ctx.lineTo(p.x + 3, p.y);
-    ctx.lineTo(p.x + 1.2, p.y - h);
-    ctx.lineTo(p.x - 1.2, p.y - h);
-    ctx.fill();
-    ctx.fillStyle = '#c6ccd3';
-    ctx.fillRect(p.x - 4, p.y - h - 3, 9, 5);
-    const a0 = (O.reduced ? 0 : O.T * (1.2 + 2.6 * wf)) + i * 0.7;
-    ctx.strokeStyle = '#eef1f4';
-    ctx.lineWidth = 2;
-    ctx.lineCap = 'round';
-    for (let k = 0; k < 3; k++) {
-      const a = a0 + (k * TAU) / 3;
-      ctx.beginPath();
-      ctx.moveTo(p.x, p.y - h);
-      ctx.lineTo(p.x + Math.cos(a) * 34, p.y - h + Math.sin(a) * 34);
-      ctx.stroke();
-    }
-    ctx.lineCap = 'butt';
-    glowDot(p.x, p.y - h - 2, 1.2, '255,60,40', Math.sin(O.T * 2 + i) > 0.6 ? 0.9 : 0.15);
-  }
-}
-
-function drawAnnex(groundSolar: number): void {
-  const x0 = -ANNEX_W - 10;
-  const amb = ambient(S.t);
-  // terrain
-  ctx.fillStyle = 'rgba(0,0,0,.18)';
-  ctx.fillRect(x0, HALL_H - 4, ANNEX_W, 8);
-  ctx.strokeStyle = 'rgba(242,183,5,.35)';
-  ctx.setLineDash([6, 4]);
-  ctx.strokeRect(x0 + 0.5, 0.5, ANNEX_W - 1, HALL_H - 1);
-  ctx.setLineDash([]);
-  // panneaux au sol (au-delà des toits)
-  for (let k = 0; k < Math.min(groundSolar, 8); k++) {
-    solarPanel(x0 + 10 + (k % 4) * 39, 12 + Math.floor(k / 4) * 16, 34, 8);
-  }
-  if (groundSolar > 8) {
-    ctx.fillStyle = '#ffd84a';
-    ctx.font = '9px "Share Tech Mono", monospace';
-    ctx.textAlign = 'left';
-    ctx.fillText(`+${groundSolar - 8} panneaux`, x0 + 10, 50);
-  }
-  // batteries : conteneurs
-  const nb = S.energy.battery;
-  const cap = Math.max(1, nb * 10000);
-  const charge = S.energy.charge / cap;
-  for (let k = 0; k < nb; k++) {
-    const bx = x0 + 10 + (k % 2) * 78;
-    const by = 62 + Math.floor(k / 2) * 26;
-    ctx.fillStyle = '#e8ebe6';
-    ctx.fillRect(bx, by, 72, 20);
-    ctx.fillStyle = '#2f8a57';
-    ctx.fillRect(bx, by, 72, 4);
-    ctx.strokeStyle = 'rgba(0,0,0,.15)';
-    for (let j = 1; j < 9; j++) {
-      ctx.beginPath();
-      ctx.moveTo(bx + j * 8, by + 4);
-      ctx.lineTo(bx + j * 8, by + 20);
-      ctx.stroke();
-    }
-    ctx.fillStyle = '#1b1d21';
-    ctx.fillRect(bx + 52, by + 8, 16, 6);
-    glowDot(bx + 54 + 12 * Math.min(1, charge), by + 11, 1.4, charge > 0.2 ? '90,255,150' : '255,90,70', 0.9);
-  }
-  // cantine
-  if (S.canteen > 0) {
-    const cx = x0 + 18;
-    const cy = HALL_H - 96;
-    ctx.fillStyle = '#9a5a3c';
-    ctx.fillRect(cx, cy, 130, 92);
-    ctx.fillStyle = '#5b3a2a';
-    ctx.beginPath();
-    ctx.moveTo(cx - 6, cy);
-    ctx.lineTo(cx + 65, cy - 26);
-    ctx.lineTo(cx + 136, cy);
-    ctx.fill();
-    ctx.fillStyle = '#f1ead8';
-    ctx.fillRect(cx + 30, cy + 8, 70, 14);
-    ctx.fillStyle = '#2a2620';
-    ctx.font = '600 10px "Chakra Petch", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('CANTINE', cx + 65, cy + 15.5);
-    const lit = 0.35 + 0.65 * (1 - amb);
-    for (let k = 0; k < 3; k++) {
-      ctx.fillStyle = `rgba(255,${Math.round(190 + 40 * lit)},${Math.round(110 + 40 * lit)},${0.5 + 0.5 * lit})`;
-      ctx.fillRect(cx + 12 + k * 40, cy + 34, 26, 22);
-      if (glow && lit > 0.5) {
-        glow.fillStyle = `rgba(255,200,120,${0.35 * lit})`;
-        glow.fillRect(cx + 12 + k * 40, cy + 34, 26, 22);
-      }
-    }
-    ctx.fillStyle = '#4a2c1e';
-    ctx.fillRect(cx + 55, cy + 64, 20, 28);
-    ctx.fillStyle = '#5b3a2a';
-    ctx.fillRect(cx + 104, cy - 30, 10, 22);
-    if (Math.random() < 0.08 && !O.reduced) smoke(cx + 109, cy - 32, 'rgba(220,220,225,.4)', 4, 2.4);
-  } else {
-    ctx.fillStyle = 'rgba(242,183,5,.6)';
-    ctx.font = '10px "Share Tech Mono", monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(nb === 0 && S.energy.solar === 0 ? 'Terrain disponible' : '', x0 + ANNEX_W / 2, HALL_H - 40);
-  }
+  u.globalAlpha = 1;
 }
 
 // ------------------------------------------------------------------ Entrée
@@ -1515,42 +173,70 @@ function drawAnnex(groundSolar: number): void {
 export interface DrawTarget {
   ctx: CanvasRenderingContext2D;
   glow: CanvasRenderingContext2D | null;
+  /** Carte de lumière (effets complets), à LIGHT_SCALE de la taille de l'écran. */
+  light: CanvasRenderingContext2D | null;
+  ui: CanvasRenderingContext2D;
   cw: number;
   ch: number;
 }
 
-export function drawScene(t: DrawTarget, s: GameState, cam: Camera, o: SceneOpts, dt: number): void {
-  ctx = t.ctx;
-  glow = t.glow;
-  S = s;
-  O = o;
+export interface SceneOut {
+  /** Sources de chaleur pour le post-traitement (x, y en uv, rayon, force). */
+  heat: Float32Array;
+  grade: Grade;
+}
+
+const HEAT = new Float32Array(HEAT_MAX * 4);
+
+export function drawScene(t: DrawTarget, s: GameState, cam: Camera, o: SceneOpts, dt: number): SceneOut {
+  const ctx = t.ctx;
   const { cw, ch } = t;
+  R.ctx = ctx;
+  R.glow = t.glow;
+  R.light = t.light;
+  R.ui = t.ui;
+  R.S = s;
+  R.O = o;
+  R.zoom = cam.zoom;
+  R.cw = cw;
+  R.ch = ch;
+  R.heat.length = 0;
+  setTexLod(cam.zoom);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  if (glow) {
-    glow.setTransform(1, 0, 0, 1, 0, 0);
-    glow.clearRect(0, 0, cw, ch);
+  t.ui.setTransform(1, 0, 0, 1, 0, 0);
+  t.ui.clearRect(0, 0, cw, ch);
+  if (t.glow) {
+    t.glow.setTransform(1, 0, 0, 1, 0, 0);
+    t.glow.clearRect(0, 0, cw, ch);
+  }
+  if (t.light) {
+    // neutre : multiplicateur 1 partout où rien n'est éclairé
+    t.light.setTransform(1, 0, 0, 1, 0, 0);
+    t.light.globalCompositeOperation = 'source-over';
+    t.light.fillStyle = 'rgb(128,128,128)';
+    t.light.fillRect(0, 0, Math.ceil(cw * LIGHT_SCALE) + 1, Math.ceil(ch * LIGHT_SCALE) + 1);
   }
   const n = s.factories.length;
   const annex = hasAnnex(s);
   const outdoor = annex || n > 1;
   if (!outdoor) {
-    ctx.fillStyle = '#15171a';
+    ctx.fillStyle = '#121416';
     ctx.fillRect(0, 0, cw, ch);
   } else drawSky(cw, ch);
   const base = (wx: number, wy: number) => {
-    const m: [number, number, number, number, number, number] = [cam.zoom, 0, 0, cam.zoom, cw / 2 + (wx - cam.x) * cam.zoom, ch / 2 + (wy - cam.y) * cam.zoom];
-    ctx.setTransform(...m);
-    if (glow) glow.setTransform(...m);
+    setWorld([cam.zoom, 0, 0, cam.zoom, cw / 2 + (wx - cam.x) * cam.zoom, ch / 2 + (wy - cam.y) * cam.zoom]);
   };
   const split = solarSplit();
   if (outdoor) {
     const top = annex ? -ROOF_H - 18 : -60;
     drawBackdrop(cw, ch / 2 + (top - cam.y) * cam.zoom, cam);
     base(0, 0);
-    drawGround(annex ? -ROOF_H - 18 : -60);
+    drawGround(top);
   }
   if (annex) {
     base(0, 0);
+    R.ox = 0;
+    R.oy = 0;
     drawTurbines();
     drawAnnex(split.ground);
   }
@@ -1561,8 +247,10 @@ export function drawScene(t: DrawTarget, s: GameState, cam: Camera, o: SceneOpts
     // hors écran ?
     const sx = cw / 2 + (o2.x - cam.x) * cam.zoom;
     const sy = ch / 2 + (o2.y - cam.y) * cam.zoom;
-    if (sx > cw || sy > ch || sx + hallPx < 0 || sy + HALL_H * cam.zoom < -60 * cam.zoom) continue;
+    if (sx > cw || sy > ch || sx + hallPx < 0 || sy + (HALL_H + 70) * cam.zoom < -60 * cam.zoom) continue;
     base(o2.x, o2.y);
+    R.ox = o2.x;
+    R.oy = o2.y;
     if (interior && annex) drawRoof(ci, split.perHall[ci]);
     ctx.save();
     ctx.beginPath();
@@ -1571,19 +259,21 @@ export function drawScene(t: DrawTarget, s: GameState, cam: Camera, o: SceneOpts
     if (interior) drawInterior(s.factories[ci], ci, dt);
     else drawExterior(s.factories[ci], ci, annex ? split.perHall[ci] : 0);
     ctx.restore();
+    const u = R.ui;
     if (!interior && hlFactory() === ci) {
-      ctx.strokeStyle = `rgba(255,216,74,${hlAlpha()})`;
-      ctx.lineWidth = 5 / cam.zoom;
-      ctx.strokeRect(-8, 10, HALL_W + 16, HALL_H);
+      u.strokeStyle = `rgba(${SIG.select},${hlAlpha()})`;
+      u.lineWidth = 5 / cam.zoom;
+      u.strokeRect(-8, 10, HALL_W + 16, HALL_H);
     }
     if (o.selected === ci && n > 1) {
-      ctx.strokeStyle = '#f2b705';
-      ctx.lineWidth = 3 / cam.zoom;
-      ctx.strokeRect(-3, interior ? -3 : 17, HALL_W + 6, interior ? HALL_H + 6 : HALL_H - 14);
+      u.strokeStyle = '#f2b705';
+      u.lineWidth = 3 / cam.zoom;
+      u.strokeRect(-3, interior ? -3 : 17, HALL_W + 6, interior ? HALL_H + 6 : HALL_H - 14);
     }
   }
-  // particules
   base(0, 0);
+  if (!interior && outdoor) drawTraffic();
+  // particules
   for (const p of particles) {
     const a = p.life / p.max;
     ctx.globalAlpha = a;
@@ -1594,26 +284,39 @@ export function drawScene(t: DrawTarget, s: GameState, cam: Camera, o: SceneOpts
       ctx.fill();
     } else {
       ctx.fillRect(p.x, p.y, p.size, p.size);
-      if (glow && p.glow) {
-        glow.globalAlpha = a;
-        glow.fillStyle = p.col;
-        glow.fillRect(p.x - 1, p.y - 1, p.size + 2, p.size + 2);
-        glow.globalAlpha = 1;
+      if (p.glow) {
+        if (t.glow) {
+          t.glow.globalAlpha = a;
+          t.glow.fillStyle = p.col;
+          t.glow.fillRect(p.x - 1, p.y - 1, p.size + 2, p.size + 2);
+          t.glow.globalAlpha = 1;
+        }
+        if (t.light) lamp(p.x, p.y, 3 + p.size * 2, [255, 200, 120], 1.2 * a);
       }
     }
   }
   ctx.globalAlpha = 1;
   drawFloats(dt);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
+  t.ui.setTransform(1, 0, 0, 1, 0, 0);
   // vignettage rouge en zone rouge
   if (o.red) {
     const g = ctx.createRadialGradient(cw / 2, ch / 2, ch * 0.3, cw / 2, ch / 2, Math.max(cw, ch) * 0.75);
     g.addColorStop(0, 'rgba(255,40,20,0)');
-    g.addColorStop(1, `rgba(255,40,20,${0.18 + 0.08 * Math.sin(o.T * 10)})`);
+    g.addColorStop(1, `rgba(255,40,20,${0.16 + (o.reduced ? 0 : 0.08 * Math.sin(o.T * 10))})`);
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, cw, ch);
   }
-  if (glow) glow.setTransform(1, 0, 0, 1, 0, 0);
+  if (t.glow) t.glow.setTransform(1, 0, 0, 1, 0, 0);
+  if (t.light) t.light.setTransform(1, 0, 0, 1, 0, 0);
+  HEAT.fill(0);
+  R.heat.slice(0, HEAT_MAX).forEach((h, i) => {
+    HEAT[i * 4] = h.x / cw;
+    HEAT[i * 4 + 1] = 1 - h.y / ch;
+    HEAT[i * 4 + 2] = clamp(h.r / ch, 0.005, 0.5);
+    HEAT[i * 4 + 3] = h.k;
+  });
+  return { heat: HEAT, grade: ERAS[eraOf(s.act)].grade };
 }
 
 /** Élément sous le curseur (coordonnées écran en pixels du canvas). */
@@ -1629,12 +332,12 @@ export function hitTest(s: GameState, cam: Camera, px: number, py: number, cw: n
     if (HALL_W * cam.zoom < INTERIOR_PX) return none;
     // ouvriers d'abord
     let best = -1;
-    let bd = 9;
+    let bd = 11;
     for (const wk of s.workers) {
       if (wk.factory !== fi || wk.state === 'train') continue;
       const r = WPOS.get(wk.id);
       if (!r) continue;
-      const d = Math.hypot(lx - r.x, ly - (r.y - 10));
+      const d = Math.hypot(lx - r.x, ly - (r.y - 13));
       if (d < bd) {
         bd = d;
         best = wk.id;
@@ -1643,7 +346,7 @@ export function hitTest(s: GameState, cam: Camera, px: number, py: number, cw: n
     if (best >= 0) return { ...none, worker: best };
     const f = s.factories[fi];
     for (let l = 0; l < f.lines.length; l++) {
-      if (ly < LY[l] - 14 || ly >= LY[l] + ROW_BASE + 8) continue;
+      if (ly < LY[l] - 16 || ly >= LY[l] + ROW_BASE + 8) continue;
       if (lx < CRANK_X + 10) return f.lines[l].conveyor ? { ...none, line: l, station: -2 } : { ...none, line: l };
       for (let st = 0; st < 4; st++) {
         if (Math.abs(lx - (SX[st] - 6)) <= STEP_X / 2) return { ...none, line: l, station: st };
@@ -1662,5 +365,5 @@ export function worldOfStation(s: GameState, fi: number, l: number, st: number):
 }
 
 export function materialColor(m: number): string {
-  return MATERIAL_COLORS[m] ?? MATERIALS[0].id;
+  return MATERIAL_COLORS[m] ?? '#888';
 }

@@ -9,6 +9,8 @@ export type Theme = 'auto' | 'light' | 'dark';
 export interface Settings {
   sound: boolean;
   fx: boolean;
+  /** Effets complets (lumière, chaleur, relief) ou sobres (halo et étalonnage). */
+  quality: 'full' | 'lite';
   theme: Theme;
   /** Marcel guide au début de chaque phase (rail). */
   tutorial: boolean;
@@ -28,7 +30,7 @@ export const G = {
   /** Simulation suspendue (écran titre, fin). */
   paused: true,
   started: false,
-  settings: { sound: true, fx: true, theme: 'auto', tutorial: true, radio: true } as Settings,
+  settings: { sound: true, fx: true, quality: 'full', theme: 'auto', tutorial: true, radio: true } as Settings,
   /** Instant réel de la dernière action du joueur (aide contextuelle). */
   lastInput: 0,
   finale: null as null | { t: number },

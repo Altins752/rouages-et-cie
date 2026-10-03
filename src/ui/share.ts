@@ -85,12 +85,15 @@ function banner(ctx: CanvasRenderingContext2D, w: number, h: number, k: number, 
 
 /** Capture l'usine telle qu'à l'écran, avec un bandeau, en PNG. */
 export function capture(): void {
-  const src = document.getElementById('cv') as HTMLCanvasElement;
+  // l'image finale : le post-traitement s'il est affiché, sinon la scène 2D ; puis les signaux
+  const gl = document.getElementById('glcv') as HTMLCanvasElement;
+  const src = gl.style.visibility === 'visible' ? gl : (document.getElementById('cv') as HTMLCanvasElement);
   const c = document.createElement('canvas');
   c.width = src.width;
   c.height = src.height;
   const ctx = c.getContext('2d')!;
   ctx.drawImage(src, 0, 0);
+  ctx.drawImage(document.getElementById('uicv') as HTMLCanvasElement, 0, 0);
   const s = G.s;
   const k = Math.max(1, c.width / 1400);
   const site = s.ended && s.act === 5 ? 'Groupe Rouages & Cie' : SITE_NAMES[s.act];

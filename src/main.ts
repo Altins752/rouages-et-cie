@@ -8,10 +8,12 @@ import { setParticleBudget, sparks, updateParticles } from './render/particles';
 import { Camera, INTERIOR_PX, drawScene, hitTest, saleFloat, viewBounds, worldOfStation } from './render/scene';
 import type { Hover } from './render/scene';
 import { PostFx } from './render/postfx';
+import { LIGHT_SCALE } from './render/rctx';
+import { warmTextures } from './render/textures';
 import { hallOrigin } from './render/layout';
 import * as A from './sim/actions';
 import { step } from './sim/engine';
-import { windFactor } from './sim/env';
+import { ambient, windFactor } from './sim/env';
 import { catchUp } from './sim/offline';
 import { createGame } from './sim/state';
 import type { GameState, SimEvent } from './sim/types';
@@ -46,6 +48,10 @@ const cv = $('cv') as HTMLCanvasElement;
 const ctx = cv.getContext('2d')!;
 const glowCv = document.createElement('canvas');
 const gctx = glowCv.getContext('2d')!;
+const lightCv = document.createElement('canvas');
+const lctx = lightCv.getContext('2d')!;
+const uiCv = $('uicv') as HTMLCanvasElement;
+const uctx = uiCv.getContext('2d')!;
 const post = new PostFx($('glcv') as HTMLCanvasElement);
 let cw = 1;
 let ch = 1;
@@ -57,10 +63,12 @@ function resize(): void {
   dpr = Math.min(window.devicePixelRatio || 1, 2);
   cw = Math.max(1, Math.round(r.width * dpr));
   ch = Math.max(1, Math.round(r.height * dpr));
-  for (const c of [cv, glowCv]) {
+  for (const c of [cv, glowCv, uiCv]) {
     c.width = cw;
     c.height = ch;
   }
+  lightCv.width = Math.max(1, Math.ceil(cw * LIGHT_SCALE));
+  lightCv.height = Math.max(1, Math.ceil(ch * LIGHT_SCALE));
   post.resize(cw, ch);
 }
 new ResizeObserver(resize).observe(stage);
@@ -79,6 +87,7 @@ function applySettings(): void {
   applyTheme();
   $('btnSound').setAttribute('aria-pressed', String(G.settings.sound));
   $('btnFx').setAttribute('aria-pressed', String(G.settings.fx && post.ok));
+  $('btnFx').lastChild!.textContent = !post.ok || !G.settings.fx ? 'Effets' : G.settings.quality === 'full' && !autoLite ? 'Effets : complets' : 'Effets : sobres';
   $('btnRadio').setAttribute('aria-pressed', String(G.settings.radio));
   setRadio(G.settings.radio);
   if (!post.ok) $('btnFx').title = 'WebGL indisponible : effets désactivés';
@@ -518,10 +527,17 @@ $('btnFx').addEventListener('click', () => {
     toast('WebGL indisponible : effets désactivés', true);
     return;
   }
-  G.settings.fx = !G.settings.fx;
+  // complets → sobres → coupés → complets
+  if (!G.settings.fx) {
+    G.settings.fx = true;
+    G.settings.quality = 'full';
+  } else if (G.settings.quality === 'full' && !autoLite) G.settings.quality = 'lite';
+  else G.settings.fx = false;
+  autoLite = false;
+  slowT = 0;
   saveSettings();
   applySettings();
-  toast(G.settings.fx ? 'Effets activés' : 'Effets désactivés');
+  toast(!G.settings.fx ? 'Effets coupés : rendu simple' : G.settings.quality === 'full' ? 'Effets complets : lumière, chaleur, relief' : 'Effets sobres : halo et couleurs');
 });
 $('btnRadio').addEventListener('click', () => {
   G.settings.radio = !G.settings.radio;
@@ -655,10 +671,15 @@ function tick(now: number): void {
     showTooltip(hover && (hover.worker >= 0 || hover.station !== -1 || hover.line >= 0 || view.factories.length > 1) ? hover : null, mouse.x, mouse.y);
   }
   const useGl = post.ok && G.settings.fx;
-  drawScene({ ctx, glow: useGl ? gctx : null, cw, ch }, view, cam, {
-    T: now / 1000, red: inRed(), rev: G.rev, selected: G.factory, reduced: reducedMotion(), finale: fin, hover, highlight: G.highlight,
+  const lit = useGl && G.settings.quality === 'full' && !autoLite;
+  const reduced = reducedMotion();
+  const out = drawScene({ ctx, glow: useGl ? gctx : null, light: lit ? lctx : null, ui: uctx, cw, ch }, view, cam, {
+    T: now / 1000, red: inRed(), rev: G.rev, selected: G.factory, reduced, finale: fin, hover, highlight: G.highlight, dpr, radio: G.settings.radio,
   }, rdt);
-  post.render(useGl, cv, glowCv, now / 1000, view, inRed());
+  post.render(useGl, cv, glowCv, now / 1000, {
+    lit, light: lit ? lightCv : null, heat: out.heat, grade: out.grade, night: 1 - ambient(view.t), red: inRed(), reduced, dt: rdt,
+  });
+  perfTick(rdt, lit);
   updateGauge();
   ambientTick(view);
   saleTick(rdt);
@@ -679,6 +700,35 @@ function tick(now: number): void {
   }
 }
 
+/** Si les effets complets font trop ramer, on passe en effets sobres (le temps de la session). */
+let autoLite = post.software && !location.search.includes('fullfx');
+let slowT = 0;
+let frameEma = 16;
+function perfTick(rdt: number, lit: boolean): void {
+  frameEma += (rdt * 1000 - frameEma) * 0.05;
+  if (!lit || !G.started || document.hidden) return;
+  slowT = frameEma > 28 ? slowT + rdt : Math.max(0, slowT - rdt);
+  if (slowT > 4) {
+    autoLite = true;
+    applySettings();
+    toast('Effets allégés pour garder la fluidité (bouton Effets pour revenir)');
+  }
+}
+
+/** Prépare les textures une à une pendant l'écran titre. */
+function warmUp(): void {
+  const names = ['brick', 'pavers', 'wood', 'castGreen', 'castGrey', 'darkMetal', 'grime', 'brushed', 'orange', 'yellow', 'graphite', 'perforated',
+    'diamond', 'blockCream', 'blockGreen', 'concrete', 'concreteDark', 'cladding', 'epoxy', 'panel', 'polished', 'blackWall', 'asphalt', 'grass', 'gravel',
+    'roofSheet', 'rust'] as const;
+  let i = 0;
+  const next = () => {
+    if (i >= names.length) return;
+    warmTextures([names[i++]]);
+    setTimeout(next, 0);
+  };
+  setTimeout(next, 50);
+}
+
 // ------------------------------------------------------------------ Lancement
 
 loadSettings();
@@ -693,5 +743,6 @@ if (import.meta.env.DEV || navigator.webdriver || location.search.includes('debu
   installDebug({ begin, cam, getCanvas: () => cv, absence, startFinale });
 }
 title();
+warmUp();
 void hasSave;
 requestAnimationFrame(frame);
