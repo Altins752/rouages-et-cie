@@ -161,6 +161,21 @@ test.describe('prologue sur PC', () => {
     expect(await page.evaluate(() => (window as any).__rouages.G.paused)).toBe(false);
   });
 
+  test('carnet du grand-père : une page trouvée se lit dans le menu', async ({ page }) => {
+    await newGame(page);
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => {
+      (window as any).__rouages.G.s.stats.sold = 1;
+    });
+    await expect(page.locator('.toast', { hasText: 'La forge, 1952' })).toBeVisible();
+    await page.getByRole('button', { name: /Menu/ }).click();
+    await page.locator('#ovNote').click();
+    await expect(page.locator('.notebook .page:not(.locked)')).toHaveCount(1);
+    await expect(page.locator('.notebook')).toContainText('trois marteaux');
+    await expect(page.locator('.notebook .page.locked').first()).toContainText('Page 2');
+    await shot(page, 'carnet');
+  });
+
   test('sauvegarde : la partie reprend après rechargement', async ({ page }) => {
     await newGame(page);
     await page.keyboard.press('Escape');

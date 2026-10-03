@@ -22,13 +22,15 @@ import { freezeDebt, tutorialTick } from './ui/tutorial';
 import { copySummary, endCard, postcardOn, togglePostcard } from './ui/share';
 import { achievementsTick, unlock, unlocked } from './ui/achievements';
 import { ACHIEVEMENTS } from './story/achievements';
+import { PAGES } from './story/notebook';
+import { notebookTick, pagesFound } from './ui/notebook';
 import { endingMsgs } from './story/script';
 import { clearSave, hasSave, loadLocal, saveLocal } from './save/save';
 import * as U from './ui/actions';
 import { updateConsole, updateGauge } from './ui/console';
 import { $, reducedMotion } from './ui/dom';
 import { dur, fmt, fmtP } from './ui/format';
-import { closeOverlay, overlayOpen, showAchievements, showEnd, showHelp, showMenu, showReport, showTitle } from './ui/overlay';
+import { closeOverlay, overlayOpen, showAchievements, showEnd, showNotebook, showHelp, showMenu, showReport, showTitle } from './ui/overlay';
 import { initPanel, invalidatePanel, renderPanel, setTab } from './ui/panel';
 import { initTelex, telex, telexAdvance, telexClose, telexOpen } from './ui/telex';
 import { toast } from './ui/toast';
@@ -527,6 +529,7 @@ $('btnMenu').addEventListener('click', () => {
     },
     tutorial: G.settings.tutorial,
     achievements: () => showAchievements(ACHIEVEMENTS, unlocked(), () => (G.paused = false)),
+    notebook: () => showNotebook(PAGES, pagesFound(), () => (G.paused = false)),
     onTutorial: (on: boolean) => {
       G.settings.tutorial = on;
       saveSettings();
@@ -648,6 +651,7 @@ function tick(now: number): void {
     updateQuests();
     if (G.started) {
       achievementsTick(s);
+      notebookTick(s);
       if (inRed()) unlock('red');
     }
   }

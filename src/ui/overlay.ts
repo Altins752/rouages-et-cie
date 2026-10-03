@@ -100,6 +100,21 @@ export function showHelp(onClose: () => void): void {
   $('ovClose').addEventListener('click', () => closeOverlay());
 }
 
+/** Carnet du grand-père : pages trouvées en clair, les autres avec un indice. */
+export function showNotebook(pages: { id: string; title: string; hint: string; text: string }[], got: Record<string, number>, onClose: () => void): void {
+  const n = pages.filter((p) => got[p.id]).length;
+  open(
+    'notebook',
+    `<h2 id="ovTitle">Carnet du grand-père <small class="ach-count">${n}/${pages.length} pages</small></h2>
+    <div class="notebook">${pages.map((p, i) => got[p.id]
+      ? `<article class="page"><h3>${p.title}</h3><p>${p.text}</p></article>`
+      : `<article class="page locked"><h3>Page ${i + 1}</h3><p>${p.hint}</p></article>`).join('')}</div>
+    <div class="menu"><button class="buy" type="button" id="ovClose" data-autofocus><span class="c">Reprendre</span><small>Échap</small></button></div>`,
+    onClose,
+  );
+  $('ovClose').addEventListener('click', () => closeOverlay());
+}
+
 /** Liste des succès : débloqués en clair, les autres en grisé. */
 export function showAchievements(list: { id: string; name: string; desc: string }[], got: Record<string, number>, onClose: () => void): void {
   const n = list.filter((a) => got[a.id]).length;
@@ -118,6 +133,7 @@ export interface MenuOpts {
   onNew: () => void;
   stats: string;
   achievements: () => void;
+  notebook: () => void;
   tutorial: boolean;
   onTutorial: (on: boolean) => void;
 }
@@ -130,6 +146,7 @@ export function showMenu(o: MenuOpts): void {
     <p>${o.stats}</p>
     <div class="menu">
       <button class="buy" type="button" id="ovRes" data-autofocus><span class="c">Reprendre</span><small>Échap</small></button>
+      <button class="buy plain" type="button" id="ovNote"><span class="c">📖 Carnet du grand-père</span><small>les pages trouvées</small></button>
       <button class="buy plain" type="button" id="ovAch"><span class="c">🏆 Succès</span><small>gardés d’une partie à l’autre</small></button>
       <button class="buy plain" type="button" id="ovTut" aria-pressed="${o.tutorial}"><span class="c" id="ovTutC">Tutoriel : ${o.tutorial ? 'activé' : 'désactivé'}</span><small>Marcel guide au début de chaque phase</small></button>
       <button class="buy alt" type="button" id="ovNew"><span class="c">Nouvelle partie</span><small id="ovNewSub">efface la partie en cours</small></button>
@@ -138,6 +155,11 @@ export function showMenu(o: MenuOpts): void {
     o.onResume,
   );
   $('ovRes').addEventListener('click', () => closeOverlay());
+  $('ovNote').addEventListener('click', () => {
+    closeHandler = null;
+    closeOverlay();
+    o.notebook();
+  });
   $('ovAch').addEventListener('click', () => {
     closeHandler = null;
     closeOverlay();

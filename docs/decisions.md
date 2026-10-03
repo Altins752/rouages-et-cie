@@ -116,3 +116,7 @@ Format : date — décision — raison.
 
 - 2026-10-04 — 29 succès dans le ton du jeu (« Taylor serait fier », « Ça coince ici », « Insomniaque », « Marcel, jamais », « Le prix du progrès »…), annoncés par un message et listés dans le menu. La plupart se lisent dans l'état de la partie ; quatre sont déclenchés par l'interface (zone rouge, commande « coup de bourre » livrée, manque à gagner d'un million, carte postale). — Récompense la curiosité et l'exploration des systèmes, sans effet sur l'équilibrage.
 - 2026-10-04 — Les succès sont gardés dans le navigateur (clé à part), d'une partie à l'autre, et non dans la sauvegarde. — Comme dans la plupart des jeux : une nouvelle partie ne les efface pas ; aucun changement du format de sauvegarde.
+
+## Carnet du grand-père (2026-10-04)
+
+- 2026-10-04 — Douze pages à collectionner, écrites par le grand-père, racontent la forge (1952), Marcel apprenti, Ferrand père, le rachat de 1978, les gars, la nuit à l'atelier, les robots, puis une lettre au petit-enfant. Chaque page se débloque à une étape (premier écrou, chaîne pourvue, outillage, dette, deuxième usine, première machine, acte II, dix promotions, équipe de nuit, premier robot, acte IV, rachat). Les pages restent dans le navigateur d'une partie à l'autre et se lisent depuis le menu ; une page verrouillée montre comment la trouver. — Donne de la profondeur à l'histoire et au choix moral de la fin, sans alourdir le télex.

@@ -343,3 +343,14 @@ body.postcard .postcard-bar { display: flex; }
 .ach b { font-size: 14px; }
 .ach span { font-size: 12.5px; }
 .ach-count { font: 14px 'Share Tech Mono', monospace; opacity: .7; margin-left: 8px; }
+
+/* ---------------------------------------------------------------- Carnet du grand-père */
+.notebook { display: grid; grid-template-columns: 1fr 1fr; align-items: start; gap: 10px; max-height: 56vh; overflow: auto; margin: 8px 0 12px; padding: 2px; }
+.notebook .page {
+  padding: 10px 14px; border-radius: 3px; color: #2a2620; box-shadow: 0 2px 6px rgba(0,0,0,.35);
+  background: repeating-linear-gradient(0deg, rgba(60,90,160,.12) 0 1px, transparent 1px 22px), #f3ead2;
+  font: italic 14px/22px Georgia, 'Times New Roman', serif;
+}
+.notebook .page h3 { margin: 0 0 4px; font: 600 15px 'Chakra Petch', sans-serif; font-style: normal; color: #5a3f24; }
+.notebook .page p { margin: 0; }
+.notebook .page.locked { opacity: .5; font-style: normal; }

@@ -107,7 +107,7 @@ Nouvelle partie obligatoire (sauvegarde v3, les anciennes sont refusées). Vocab
 - [x] Télex narquois du patron de Ferrum (12 paliers, de narquois à nerveux)
 - [x] Mode carte postale (touche P, capture PNG) et carte de fin de partie (image et résumé à copier)
 - [x] Succès humoristiques (29, gardés dans le navigateur d'une partie à l'autre, liste dans le menu)
-- [ ] Carnet du grand-père en pages à collectionner
+- [x] Carnet du grand-père : 12 pages à collectionner (menu), gardées d'une partie à l'autre
 - [ ] Radio de l'atelier
 - [ ] Défis de bac à sable
 
