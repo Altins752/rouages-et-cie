@@ -1414,7 +1414,7 @@ function drawHighlight(f: Factory, fi: number): void {
       u.textBaseline = 'middle';
       u.fillText('+', SX[c], LY[b] + 16);
     }
-  } else if (h.kind === 'c' && a === fi) {
+  } else if (h.kind === 'c' && a === fi && b >= 0) {
     box(CRANK_X - 30, LY[b] + ROW_BASE - 34, SX[3] + 30 - (CRANK_X - 30), 44);
   } else if (h.kind === 't') {
     f.lines.forEach((line, l) => {

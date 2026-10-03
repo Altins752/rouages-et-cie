@@ -28,6 +28,7 @@ const RAILS: Record<number, GuideStep[]> = {
     { target: 'sel:#obj', text: 'La dette est payée, la forge est à toi. Maintenant, la ville : il faut en tenir la moitié du marché.' },
     { tab: 'rd', target: 'sel:#list .card', text: 'Nouvel onglet : le bureau d’études. Machines, matériaux… Tout commence ici.' },
     { tab: 'equipe', target: 'sel:[data-act="role"][data-i="foreman"]', text: 'Le contremaître : il te dit la cadence de chaque poste et qui freine sa chaîne.' },
+    { target: 'scene', text: 'Astuce : clique directement sur une machine, un ouvrier ou une chaîne. Tu as ses actions sous la main, sans chercher dans le panneau.' },
     { target: 'sel:#quests', text: 'Le carnet a de nouvelles pages. Suis-les, ça vient tout seul.' },
   ],
   2: [

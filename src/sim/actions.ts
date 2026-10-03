@@ -11,7 +11,7 @@ import type { ChallengeId, KnowHowId, RoleId } from '../data/balance';
 import { machineRank, modernizeMachine, releaseWorker, spotRoom, startCourse } from './engine';
 import {
   canPromote, canTrain, conveyorCost, crankUseful, tierCap, factoryValue, knowHow, knowHowCost, knowHowGain, machineCycle, materialOk,
-  modernizeCost, newFactoryCost, nightCost, promotionCost, toolCost, trainingCost, unitPrice,
+  modernizeCost, newFactoryCost, nightCost, promotionCost, promotionTime, toolCost, trainingCost, trainingTime, unitPrice,
 } from './formulas';
 import { newFactory, newMachine, newWorker, rollTrait } from './state';
 import type { Factory, GameState, Worker } from './types';
@@ -253,6 +253,82 @@ export function modernize(s: GameState, fi: number, st: number): Result {
   if (s.money < tgt.cost) return fail('argent');
   modernizeMachine(s, f, tgt.line, st, machineRank(f, tgt.line, st));
   return ok(tgt.cost, String(tgt.line));
+}
+
+/** Prix de modernisation d'une machine précise, ou null si son palier suivant n'est pas permis. */
+export function modernizeAtCost(s: GameState, fi: number, l: number, st: number): number | null {
+  const f = s.factories[fi];
+  const m = f?.lines[l]?.slots[st];
+  if (!f || !m || !tierAllowed(s, m.tier + 1)) return null;
+  return modernizeCost(m.tier, st, machineRank(f, l, st));
+}
+
+/** Moderniser une machine précise (carte d'actions de la scène). */
+export function modernizeAt(s: GameState, fi: number, l: number, st: number): Result {
+  const f = factoryAt(s, fi);
+  const cost = modernizeAtCost(s, fi, l, st);
+  if (!f || cost === null) return fail('recherche');
+  if (s.money < cost) return fail('argent');
+  modernizeMachine(s, f, l, st, machineRank(f, l, st));
+  return ok(cost, String(l));
+}
+
+// ---------------------------------------------------------------- Actions groupées sur une chaîne (tout ou rien)
+
+/** Machines d'une chaîne qu'on peut moderniser, avec leur prix. */
+export function lineModernizeTargets(s: GameState, fi: number, l: number): { st: number; cost: number }[] {
+  const out: { st: number; cost: number }[] = [];
+  for (let st = 0; st < 4; st++) {
+    const c = modernizeAtCost(s, fi, l, st);
+    if (c !== null) out.push({ st, cost: c });
+  }
+  return out;
+}
+
+/** Moderniser toute la chaîne d'un coup : seulement si la caisse couvre tout. */
+export function modernizeLine(s: GameState, fi: number, l: number): Result {
+  const f = factoryAt(s, fi);
+  const t = lineModernizeTargets(s, fi, l);
+  if (!f || !t.length) return fail('rien');
+  const total = t.reduce((a, x) => a + x.cost, 0);
+  if (s.money < total) return fail('argent');
+  for (const x of t) modernizeMachine(s, f, l, x.st, machineRank(f, l, x.st));
+  return ok(total, String(t.length));
+}
+
+/** Ouvriers attachés à une chaîne : titulaires des postes et ouvrier à la manivelle. */
+export function lineCrew(s: GameState, fi: number, l: number): Worker[] {
+  return s.workers.filter((w) => w.factory === fi && w.line === l && (w.kind === 'post' || w.kind === 'crank'));
+}
+
+/** Ouvriers de la chaîne à former (ceux qui ne peuvent pas encore être promus) et prix total. */
+export function lineTrainees(s: GameState, fi: number, l: number): { ws: Worker[]; cost: number; time: number } {
+  const ws = lineCrew(s, fi, l).filter((w) => canTrain(w));
+  return { ws, cost: ws.reduce((a, w) => a + trainingCost(s, w), 0), time: Math.max(0, ...ws.map((w) => trainingTime(s, w))) };
+}
+
+/** Ouvriers de la chaîne qui peuvent être promus, et prix total. */
+export function linePromotees(s: GameState, fi: number, l: number): { ws: Worker[]; cost: number; time: number } {
+  const ws = lineCrew(s, fi, l).filter((w) => canPromote(w));
+  return { ws, cost: ws.reduce((a, w) => a + promotionCost(s, w), 0), time: Math.max(0, ...ws.map((w) => promotionTime(s, w))) };
+}
+
+/** Former tous les ouvriers de la chaîne d'un coup (la chaîne s'arrête pendant le stage). */
+export function trainLine(s: GameState, fi: number, l: number): Result {
+  const g = lineTrainees(s, fi, l);
+  if (!g.ws.length) return fail('personne');
+  if (s.money < g.cost) return fail('argent');
+  for (const w of g.ws) startCourse(s, w, 'train');
+  return ok(g.cost, String(g.ws.length));
+}
+
+/** Promouvoir tous les ouvriers de la chaîne qui ont leurs formations. */
+export function promoteLine(s: GameState, fi: number, l: number): Result {
+  const g = linePromotees(s, fi, l);
+  if (!g.ws.length) return fail('personne');
+  if (s.money < g.cost) return fail('argent');
+  for (const w of g.ws) startCourse(s, w, 'promote');
+  return ok(g.cost, String(g.ws.length));
 }
 
 export function toolLevel(s: GameState, tier: number, st: number): number {

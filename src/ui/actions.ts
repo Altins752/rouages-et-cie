@@ -65,8 +65,8 @@ export function promote(id: number): void {
   done(r, () => `🎖 ${w?.name} part en promotion : ${LEVEL_NAMES[Math.min(4, (w?.level ?? 0) + 1)].toLowerCase()} (${Math.round(w ? promotionTime(G.s, w) : 0)} s)`, 'click');
 }
 
-export function addUnit(si: number, fi = G.factory): void {
-  const r = A.addUnit(G.s, fi, si);
+export function addUnit(si: number, fi = G.factory, line = -1): void {
+  const r = A.addUnit(G.s, fi, si, line);
   const f = G.s.factories[fi];
   const l = r.ok ? +(r.info ?? 0) : 0;
   const tier = f.lines[l]?.slots[si]?.tier ?? 0;
@@ -102,6 +102,39 @@ export function modernize(si: number, fi = G.factory): void {
     const w = G.s.workers.find((x) => x.id === m.post);
     if (w && next < 3 && w.level < TIER_OPERATOR_LEVEL[next]) toast(`${w.name} doit être promu·e ${LEVEL_NAMES[TIER_OPERATOR_LEVEL[next]].toLowerCase()} pour la conduire`, true);
   }
+}
+
+/** Moderniser une machine précise (carte d'actions de la scène). */
+export function modernizeAt(fi: number, l: number, si: number): void {
+  const m = G.s.factories[fi]?.lines[l]?.slots[si];
+  if (!m) return;
+  const next = m.tier + 1;
+  if (done(A.modernizeAt(G.s, fi, l, si), `${STATION_NAMES[si]} de la chaîne ${l + 1} modernisée : ${MACHINE_NAMES[next]?.[si]?.toLowerCase() ?? ''}`, 'build')) {
+    const p = worldOfStation(G.s, fi, l, si);
+    dust(p.x, p.y + 16);
+    const w = G.s.workers.find((x) => x.id === m.post);
+    if (w && next < 3 && w.level < TIER_OPERATOR_LEVEL[next]) toast(`${w.name} doit être promu·e ${LEVEL_NAMES[TIER_OPERATOR_LEVEL[next]].toLowerCase()} pour la conduire`, true);
+  }
+}
+
+/** Moderniser toute une chaîne d'un coup (tout ou rien). */
+export function modernizeLine(fi: number, l: number): void {
+  if (done(A.modernizeLine(G.s, fi, l), (r) => `🏭 Chaîne ${l + 1} modernisée : ${r.ok ? r.info : 0} machine(s), ${fmt(r.ok ? r.cost ?? 0 : 0)} €`, 'build')) {
+    for (let si = 0; si < 4; si++) if (G.s.factories[fi].lines[l].slots[si]) {
+      const p = worldOfStation(G.s, fi, l, si);
+      dust(p.x, p.y + 16);
+    }
+  }
+}
+
+/** Former tous les ouvriers d'une chaîne d'un coup. */
+export function trainLine(fi: number, l: number): void {
+  done(A.trainLine(G.s, fi, l), (r) => `🎓 Chaîne ${l + 1} : ${r.ok ? r.info : 0} ouvrier(s) partent en formation`, 'click');
+}
+
+/** Promouvoir tous les ouvriers d'une chaîne qui ont leurs formations. */
+export function promoteLine(fi: number, l: number): void {
+  done(A.promoteLine(G.s, fi, l), (r) => `🎖 Chaîne ${l + 1} : ${r.ok ? r.info : 0} ouvrier(s) partent en promotion`, 'click');
 }
 
 export function buyConveyor(l: number, fi = G.factory): void {

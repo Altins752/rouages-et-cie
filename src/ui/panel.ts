@@ -71,7 +71,7 @@ function apply(L: ListEl, v: View): void {
 }
 
 /** « dans 1 min 20 » : temps pour réunir la somme au bénéfice actuel. */
-function waitText(missing: number, rate: number): string {
+export function waitText(missing: number, rate: number): string {
   if (rate <= 0.001) return 'recettes insuffisantes';
   const t = Math.ceil(missing / rate);
   if (t < 60) return `dans ${t} s`;

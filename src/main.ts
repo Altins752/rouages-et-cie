@@ -10,7 +10,7 @@ import type { Hover } from './render/scene';
 import { PostFx } from './render/postfx';
 import { LIGHT_SCALE } from './render/rctx';
 import { warmTextures } from './render/textures';
-import { hallOrigin } from './render/layout';
+import { HALL_W, LY, SX, hallOrigin } from './render/layout';
 import * as A from './sim/actions';
 import { step } from './sim/engine';
 import { ambient, windFactor } from './sim/env';
@@ -40,6 +40,9 @@ import { toast } from './ui/toast';
 import { showTooltip } from './ui/tooltip';
 import { ACT_NAMES, CHALLENGE_NAMES, LEVEL_NAMES, MISSED_QUIPS, STATION_NAMES, TIER_NAMES } from './ui/text';
 import { setPanelHooks } from './ui/views';
+import { cardHighlight, cardKey, cardOpen, cardRef, closeCard, initCard, openCard, placeCard, refreshCard, setCardHooks } from './ui/card';
+import type { CardRef } from './ui/card';
+import { WPOS } from './render/workers';
 
 // ------------------------------------------------------------------ Canvas
 
@@ -459,11 +462,60 @@ stage.addEventListener('pointermove', (e) => {
     }
   }
 });
-const release = () => {
+const release = (e?: PointerEvent) => {
+  // un clic (sans glisser) sur la scène ouvre la carte d'actions de ce qui est dessous
+  if (e && e.type === 'pointerup' && drag && !drag.moved && drag.button === 0 && G.started && !G.finale) {
+    const r = stage.getBoundingClientRect();
+    const h = hitTest(G.s, cam, (e.clientX - r.left) * dpr, (e.clientY - r.top) * dpr, cw, ch);
+    const c = h ? cardFor(h) : null;
+    if (c) {
+      openCard(c);
+      sfx('click');
+    } else closeCard();
+  }
   drag = null;
   stage.classList.remove('grab');
 };
 stage.addEventListener('pointerup', release);
+
+/** Ce qu'ouvre un clic : ouvrier, machine (un bac ouvre le poste qu'il alimente), emplacement, chaîne, usine. */
+function cardFor(h: Hover): CardRef | null {
+  const s = G.s;
+  if (h.worker >= 0) return { kind: 'worker', id: h.worker };
+  if (HALL_W * cam.zoom < INTERIOR_PX) return { kind: 'factory', fi: h.hall };
+  const f = s.factories[h.hall];
+  if (h.line < 0) return null;
+  if (h.station === -2 || h.station === -1) return { kind: 'chain', fi: h.hall, l: h.line };
+  return f.lines[h.line]?.slots[h.station] ? { kind: 'machine', fi: h.hall, l: h.line, st: h.station } : { kind: 'slot', fi: h.hall, l: h.line, st: h.station };
+}
+
+/** Position à l'écran (px du stage) de l'entité de la carte. */
+function cardAnchor(c: CardRef): { x: number; y: number } | null {
+  const n = G.s.factories.length;
+  let wx: number;
+  let wy: number;
+  if (c.kind === 'worker') {
+    const w = G.s.workers.find((x) => x.id === c.id);
+    const p = WPOS.get(c.id);
+    if (!w || !p) return null;
+    const o = hallOrigin(w.factory, n);
+    wx = o.x + p.x;
+    wy = o.y + p.y - 20;
+  } else {
+    const o = hallOrigin(c.fi, n);
+    if (c.kind === 'factory') {
+      wx = o.x + HALL_W;
+      wy = o.y + 80;
+    } else if (c.kind === 'chain') {
+      wx = o.x + 50;
+      wy = o.y + LY[c.l];
+    } else {
+      wx = o.x + SX[c.st] + 20;
+      wy = o.y + LY[c.l];
+    }
+  }
+  return { x: ((wx - cam.x) * cam.zoom + cw / 2) / dpr, y: ((wy - cam.y) * cam.zoom + ch / 2) / dpr };
+}
 stage.addEventListener('pointercancel', release);
 stage.addEventListener('pointerleave', () => {
   mouse.in = false;
@@ -493,6 +545,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (postcardOn()) togglePostcard(false);
     else if (ov && ov !== 'title') closeOverlay();
+    else if (cardOpen()) closeCard();
     else if (telexOpen()) telexClose();
     else if (guideActive()) stopGuide(true);
     return;
@@ -516,6 +569,8 @@ document.addEventListener('keydown', (e) => {
     telexAdvance();
     return;
   }
+  // carte ouverte : les chiffres déclenchent ses actions
+  if (e.key >= '1' && e.key <= '9' && !e.ctrlKey && !e.altKey && !e.metaKey && cardKey(e.key)) return;
   if (e.key >= '1' && e.key <= '5' && !e.ctrlKey && !e.altKey && !e.metaKey) {
     setTab(TABS[+e.key - 1]);
     return;
@@ -698,13 +753,13 @@ function tick(now: number): void {
   if (hoverT > 0.1) {
     hoverT = 0;
     hover = mouse.in && !drag?.moved ? hitTest(view, cam, mouse.x * dpr, mouse.y * dpr, cw, ch) : null;
-    showTooltip(hover && (hover.worker >= 0 || hover.station !== -1 || hover.line >= 0 || view.factories.length > 1) ? hover : null, mouse.x, mouse.y);
+    showTooltip(!cardOpen() && hover && (hover.worker >= 0 || hover.station !== -1 || hover.line >= 0 || view.factories.length > 1) ? hover : null, mouse.x, mouse.y);
   }
   const useGl = post.ok && G.settings.fx;
   const lit = useGl && G.settings.quality === 'full' && !autoLite;
   const reduced = reducedMotion();
   const out = drawScene({ ctx, glow: useGl ? gctx : null, light: lit ? lctx : null, ui: uctx, cw, ch }, view, cam, {
-    T: now / 1000, red: inRed(), rev: G.rev, selected: G.factory, reduced, finale: fin, hover, highlight: G.highlight, dpr, radio: G.settings.radio,
+    T: now / 1000, red: inRed(), rev: G.rev, selected: G.factory, reduced, finale: fin, hover, highlight: G.highlight ?? cardHighlight(), dpr, radio: G.settings.radio,
   }, rdt);
   post.render(useGl, cv, glowCv, now / 1000, {
     lit, light: lit ? lightCv : null, heat: out.heat, grade: out.grade, night: 1 - ambient(view.t), red: inRed(), reduced, dt: rdt,
@@ -712,6 +767,12 @@ function tick(now: number): void {
   perfTick(rdt, lit);
   updateGauge();
   throttleTick(rdt);
+  const cr = cardRef();
+  if (cr) {
+    if (cr.kind === 'factory' && HALL_W * cam.zoom >= INTERIOR_PX) closeCard();
+    const a = cardAnchor(cr);
+    if (a) placeCard(a.x, a.y, cw / dpr, ch / dpr);
+  }
   ambientTick(view);
   saleTick(rdt);
   $('hint').classList.toggle('show', G.started && !G.paused && s.act === 0 && s.t < 120 && G.lastInput === 0 && !telexOpen() && !guideActive());
@@ -722,6 +783,7 @@ function tick(now: number): void {
     uiT = 0;
     updateConsole();
     renderPanel();
+    refreshCard();
     updateQuests();
     if (G.started) {
       achievementsTick(s);
@@ -794,6 +856,20 @@ loadSettings();
 applySettings();
 initTelex();
 initPanel();
+initCard();
+setCardHooks({
+  focusFactory,
+  setTab,
+  enterHall: (fi) => {
+    focusFactory(fi);
+    const o = hallOrigin(fi, G.s.factories.length);
+    cam.tx = o.x + 200;
+    cam.ty = o.y + 202;
+    cam.tz = Math.max(cam.tz, (INTERIOR_PX + 60) / HALL_W, Math.min(cw / 420, ch / 424));
+    cam.user = true;
+    closeCard();
+  },
+});
 $('hint').textContent = 'Maintenez le gros bouton rouge (ou la barre d’espace) pour accélérer le temps';
 updateConsole();
 renderPanel();
