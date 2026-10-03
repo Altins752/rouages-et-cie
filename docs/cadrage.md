@@ -146,7 +146,8 @@ Facteur appliqué : frappe et taraudage plein ; découpe 1 + (f − 1) × 0,5 ; 
 ## 9. Tap / clic : accélérer le temps
 
 - Tout accélère ensemble (production, salaires, électricité, usure, moral, jour/nuit, délais). Hors ligne : vitesse ×1.
-- Modèle POC (régime `rev` de 0 à 1) : chaque clic +0,12 × √(1 − rev) ; retombée (0,08 + 0,5 × rev²) par seconde ; maintien du clic (ou de la barre d'espace) = montée jusqu'à 0,5 ; zone rouge au-delà de 0,8 ; vitesse = 1 + rev × (max − 1).
+- Commande : un gros bouton rouge sur le pupitre, à côté du compte-tours (« NE PAS APPUYER — sauf si pressé »), ou la barre d'espace. Le clic sur la scène ne fait plus passer le temps : il est réservé aux actions sur les machines et les ouvriers.
+- Modèle POC (régime `rev` de 0 à 1) : chaque appui +0,12 × √(1 − rev) ; retombée (0,08 + 0,5 × rev²) par seconde ; maintien du bouton (ou de la barre d'espace) = montée jusqu'à 0,5 ; zone rouge au-delà de 0,8 ; vitesse = 1 + rev × (max − 1).
 - Vitesse max : ×3 prologue, ×4 acte I, ×4,5 acte II, ×5 acte III, ×5 acte IV (à valider).
 - Zone rouge : usure ×5. Il faut ~10 clics/s pour y entrer.
 - Compte-tours gradué tous les ×0,25 sur le pupitre ; retours visuels et sonores (ouvriers qui courent, son plus aigu, vignettage rouge).

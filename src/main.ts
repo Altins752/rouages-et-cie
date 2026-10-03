@@ -403,13 +403,45 @@ stage.addEventListener('pointerdown', (e) => {
   markInput();
   stage.setPointerCapture(e.pointerId);
   drag = { x: e.clientX, y: e.clientY, moved: false, button: e.button };
-  if (e.button === 0 && !G.paused) {
+  e.preventDefault();
+});
+
+// gros bouton rouge : maintenir = zone verte, appuyer très vite = zone rouge
+const btnGo = $('btnGo');
+let goPointer = -1;
+btnGo.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return;
+  initAudio();
+  markInput();
+  goPointer = e.pointerId;
+  btnGo.setPointerCapture(e.pointerId);
+  if (!G.paused) {
     G.pointerHeld = true;
     tapBoost();
     sfx('tap', 0, G.rev);
   }
   e.preventDefault();
 });
+const goRelease = (e: PointerEvent) => {
+  if (e.pointerId !== goPointer) return;
+  goPointer = -1;
+  G.pointerHeld = false;
+};
+btnGo.addEventListener('pointerup', goRelease);
+btnGo.addEventListener('pointercancel', goRelease);
+btnGo.addEventListener('lostpointercapture', goRelease);
+btnGo.addEventListener('contextmenu', (e) => e.preventDefault());
+// au clavier : Entrée donne un coup, comme un clic (la barre d'espace reste le maintien)
+btnGo.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.repeat && !G.paused) {
+    e.preventDefault();
+    markInput();
+    tapBoost();
+    sfx('tap', 0, G.rev);
+  }
+  if (e.key === ' ') e.preventDefault();
+});
+btnGo.addEventListener('click', (e) => e.preventDefault());
 stage.addEventListener('pointermove', (e) => {
   const r = stage.getBoundingClientRect();
   mouse = { x: e.clientX - r.left, y: e.clientY - r.top, in: true };
@@ -418,7 +450,6 @@ stage.addEventListener('pointermove', (e) => {
     const dy = e.clientY - drag.y;
     if (!drag.moved && Math.hypot(dx, dy) > 6) {
       drag.moved = true;
-      G.pointerHeld = false;
       stage.classList.add('grab');
     }
     if (drag.moved) {
@@ -429,7 +460,6 @@ stage.addEventListener('pointermove', (e) => {
   }
 });
 const release = () => {
-  G.pointerHeld = false;
   drag = null;
   stage.classList.remove('grab');
 };
@@ -681,6 +711,7 @@ function tick(now: number): void {
   });
   perfTick(rdt, lit);
   updateGauge();
+  throttleTick(rdt);
   ambientTick(view);
   saleTick(rdt);
   $('hint').classList.toggle('show', G.started && !G.paused && s.act === 0 && s.t < 120 && G.lastInput === 0 && !telexOpen() && !guideActive());
@@ -697,6 +728,34 @@ function tick(now: number): void {
       notebookTick(s);
       if (inRed()) unlock('red');
     }
+  }
+}
+
+/** Le bouton suit le compte-tours : enfoncé, bague lumineuse verte → ambre → rouge ; Marcel commente parfois. */
+const THROTTLE_QUIPS = [
+  'Doucement, petit. Les machines, ça se respecte.',
+  'Ton grand-père appuyait moins fort que ça.',
+  'Si tu casses la presse, c’est toi qui répares.',
+  'On n’est pas aux 24 Heures du Mans.',
+  'Le bouton ne fabrique rien, hein. Il fait juste passer le temps.',
+];
+let holdT = 0;
+let quipAt = -1e9;
+let quipN = 0;
+function throttleTick(rdt: number): void {
+  const holding = G.pointerHeld || G.spaceHeld;
+  const red = inRed();
+  btnGo.classList.toggle('down', holding);
+  $('throttle').classList.toggle('active', holding || G.rev > 0.05);
+  $('throttle').classList.toggle('red', red);
+  const glow = G.rev < 0.02 ? 'rgba(87,217,135,0)' : red ? 'rgba(255,59,43,.9)' : G.rev > 0.55 ? 'rgba(255,176,46,.8)' : `rgba(87,217,135,${(0.3 + G.rev).toFixed(2)})`;
+  btnGo.style.setProperty('--glow', glow);
+  holdT = holding && G.started && !G.paused ? holdT + rdt : 0;
+  const now = performance.now();
+  if (holdT > 25 && now - quipAt > 180_000) {
+    quipAt = now;
+    holdT = 0;
+    toast(`Marcel : « ${THROTTLE_QUIPS[quipN++ % THROTTLE_QUIPS.length]} »`);
   }
 }
 
@@ -735,7 +794,7 @@ loadSettings();
 applySettings();
 initTelex();
 initPanel();
-$('hint').textContent = 'Maintenez le clic sur l’atelier (ou la barre d’espace) pour accélérer le temps';
+$('hint').textContent = 'Maintenez le gros bouton rouge (ou la barre d’espace) pour accélérer le temps';
 updateConsole();
 renderPanel();
 // Accès de test : en développement, sous navigateur piloté (Playwright) ou avec ?debug.

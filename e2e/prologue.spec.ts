@@ -14,9 +14,9 @@ async function start(page: Page): Promise<void> {
 
 test('zone rouge : il faut mitrailler, et l’écran rougit', async ({ page }) => {
   await start(page);
-  const box = (await page.locator('#stage').boundingBox())!;
+  const box = (await page.locator('#btnGo').boundingBox())!;
   const x = box.x + box.width * 0.5;
-  const y = box.y + box.height * 0.75;
+  const y = box.y + box.height * 0.5;
   for (let i = 0; i < 26; i++) {
     await page.mouse.click(x, y, { delay: 5 });
     await page.waitForTimeout(40);

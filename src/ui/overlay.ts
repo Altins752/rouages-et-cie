@@ -47,7 +47,7 @@ export function showTitle(o: TitleOpts): void {
       ${o.hasSave ? `<button class="buy" type="button" id="ovCont" data-autofocus><span class="c">Continuer</span><small>${o.summary}</small></button>` : ''}
       <button class="buy ${o.hasSave ? 'plain' : ''}" type="button" id="ovNew" ${o.hasSave ? '' : 'data-autofocus'}><span class="c">Nouvelle partie</span><small id="ovNewSub">${o.hasSave ? 'efface la partie en cours' : 'la forge vous attend'}</small></button>
     </div>
-    <p class="credits">Souris : maintenir le clic sur l’usine pour accélérer le temps · molette pour zoomer · glisser pour se déplacer<br>
+    <p class="credits">Souris : maintenir le gros bouton rouge pour accélérer le temps · molette pour zoomer · glisser pour se déplacer<br>
     Clavier : barre d’espace (accélérer) · 1 à 5 (onglets) · H (aide) · Échap (fermer le télex)</p>`,
     null,
   );
@@ -76,7 +76,7 @@ export function showHelp(onClose: () => void): void {
     <p>Vous fabriquez des écrous sur une ligne à quatre postes : <b>découpe</b>, <b>frappe</b>, <b>taraudage</b>, <b>contrôle</b>. Le débit d’une chaîne est celui de son poste le plus lent : le <b>goulot</b>. Là où les pièces s’entassent, c’est là que ça coince.</p>
     <p>Une usine compte quatre <b>chaînes</b>, achetées poste par poste. Quatre leviers : le <b>personnel</b> (chacun garde son poste ; former, puis promouvoir), la <b>technologie</b> (postes, machines, outillage, convoyeurs), les <b>usines</b> et le <b>matériau</b> (chaque écrou vaut plus).</p>
     <p>Survolez un bouton d’achat : ce qu’il touche clignote dans l’usine. Sous un achat trop cher, le délai indique quand la caisse suffira au rythme actuel.</p>
-    <p>Le clic ne fabrique rien : il <b>accélère le temps</b>. Clic maintenu = zone verte. Pour la zone rouge, il faut cliquer très vite… et les machines s’usent cinq fois plus.</p>
+    <p>Le gros bouton rouge ne fabrique rien : il <b>accélère le temps</b>. Bouton maintenu (ou barre d’espace) = zone verte. Pour la zone rouge, il faut appuyer très vite… et les machines s’usent cinq fois plus.</p>
     <h3>Commandes</h3>
     <table>
       <tr><td>Clic maintenu / Espace</td><td>Accélérer le temps (zone verte)</td></tr>

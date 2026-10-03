@@ -61,7 +61,7 @@ src/
 2. **Ligne à 4 postes** (découpe, frappe, taraudage, contrôle). Une usine compte 4 chaînes ; le débit d'une chaîne est celui de son poste le plus lent.
 3. **Quatre leviers** : personnel, technologie, chaînes, matériau.
 4. **Ouvriers affectés automatiquement** : à l'embauche, chacun prend le poste libre le plus utile et n'en change plus ; seuls les polyvalents circulent (postes vacants, relève).
-5. **Le clic accélère le temps**, il ne produit rien. Clic maintenu sur la scène (ou barre d'espace maintenue) = milieu de zone verte ; la zone rouge exige de cliquer très vite et multiplie l'usure.
+5. **Le gros bouton rouge accélère le temps**, il ne produit rien. Bouton du pupitre maintenu (ou barre d'espace maintenue) = milieu de zone verte ; la zone rouge exige d'appuyer très vite et multiplie l'usure. Un clic sur la scène ne fait pas passer le temps (il est réservé aux actions sur les entités).
 6. **Jamais bloqué** : planchers de cadence, maintenance toujours possible, dette plutôt que faillite, une crise à la fois.
 7. **Le gaspillage coûte** : machine en veille = électricité à 30 %, opérateur payé, usure lente.
 8. **L'information se débloque** : le tableau de bord commence vide et se remplit avec les rôles recrutés (contremaître, superviseur, RH…).
@@ -88,7 +88,7 @@ Validés en jeu, à reporter dans `docs/cadrage.md` :
 
 - Cible : navigateurs de bureau récents (Chrome, Firefox, Edge), écran paysage de 1280 × 720 à 2560 × 1440.
 - Mise en page : la scène de l'usine occupe la grande partie gauche de l'écran ; le pupitre en haut ; les onglets de gestion dans un panneau latéral droit. Aucun défilement de page, seul le panneau défile.
-- Souris : clic et maintien sur la scène pour accélérer le temps, molette pour zoomer, glisser pour se déplacer quand l'usine dépasse l'écran, survol des postes et des ouvriers pour une info-bulle.
+- Souris : gros bouton rouge du pupitre (maintenu ou mitraillé) pour accélérer le temps, molette pour zoomer, glisser pour se déplacer quand l'usine dépasse l'écran, survol des postes et des ouvriers pour une info-bulle.
 - Clavier : barre d'espace maintenue = accélérer ; touches 1 à 5 = onglets ; Échap = fermer le télex ; raccourcis affichés dans une aide (touche H).
 - Le POC est pensé mobile : reprendre sa logique et son rendu, pas sa mise en page.
 

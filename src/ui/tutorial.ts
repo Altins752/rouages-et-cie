@@ -14,8 +14,8 @@ const lineFull = (s: GameState) => s.factories[0].lines[0].slots.every((m) => m 
 /** Rails par acte. Au prologue, les étapes d'action se valident en agissant. */
 const RAILS: Record<number, GuideStep[]> = {
   0: [
-    { target: 'scene', text: 'Bienvenue à la forge, petit. Maintiens le clic sur l’atelier, ou la barre d’espace : le temps file plus vite. Essaie.', until: () => G.rev > 0.3 },
-    { target: 'scene', text: 'Voilà. Le clic ne fabrique rien : il fait passer le temps. Plus vite tu cliques, plus ça tourne… et plus ça s’use.' },
+    { target: 'sel:#throttle', text: 'Bienvenue à la forge, petit. Tu vois le gros bouton rouge ? Maintiens-le, ou la barre d’espace : le temps file plus vite. Essaie.', until: () => G.rev > 0.3 },
+    { target: 'sel:#throttle', text: 'Voilà. Le bouton ne fabrique rien : il fait passer le temps. Plus vite tu appuies, plus ça tourne… et plus ça s’use.' },
     { tab: 'equipe', target: 'act:hire', text: 'Tout seul, je cours d’un établi à l’autre. Embauche quelqu’un.', until: (s) => posts(s) >= 1 },
     { target: 'scene', text: 'Tu vois ? Il a pris un poste, et il n’en bougera plus. Moi, je bouche les trous.' },
     { tab: 'equipe', target: 'act:hire', text: 'Un ouvrier par poste : complète la chaîne 1.', until: lineFull },

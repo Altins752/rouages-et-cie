@@ -44,14 +44,22 @@ test.describe('prologue sur PC', () => {
     expect(produced).toBeGreaterThanOrEqual(sold0);
   });
 
-  test('clic maintenu sur l’atelier : zone verte', async ({ page }) => {
+  test('gros bouton rouge maintenu : zone verte ; un clic sur l’atelier ne fait pas passer le temps', async ({ page }) => {
     await newGame(page);
     await page.keyboard.press('Escape');
-    const box = await page.locator('#stage').boundingBox();
-    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height * 0.7);
+    const st = (await page.locator('#stage').boundingBox())!;
+    await page.mouse.move(st.x + st.width / 2, st.y + st.height * 0.7);
+    await page.mouse.down();
+    await page.waitForTimeout(800);
+    const rev0 = await page.evaluate(() => (window as any).__rouages.G.rev);
+    await page.mouse.up();
+    expect(rev0).toBeLessThan(0.05);
+    const box = (await page.locator('#btnGo').boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.down();
     await page.waitForTimeout(1500);
     const rev = await page.evaluate(() => (window as any).__rouages.G.rev);
+    await expect(page.locator('#btnGo')).toHaveClass(/down/);
     await page.mouse.up();
     expect(rev).toBeGreaterThan(0.45);
     expect(rev).toBeLessThan(0.8);
@@ -60,10 +68,9 @@ test.describe('prologue sur PC', () => {
   test('acheter un outillage et changer d’onglet au clavier', async ({ page }) => {
     await newGame(page);
     await page.keyboard.press('Escape');
-    const before = await page.evaluate(() => (window as any).__rouages.G.s.money);
+    // la caisse peut remonter aussitôt (récompense de quête) : on vérifie le niveau d'outillage
     await page.locator('[data-act="tool"][data-i="3"]').click();
-    const after = await page.evaluate(() => (window as any).__rouages.G.s.money);
-    expect(after).toBeLessThan(before);
+    expect(await page.evaluate(() => (window as any).__rouages.G.s.tooling[0][3])).toBe(1);
     await page.keyboard.press('2');
     await expect(page.locator('#tabs button[data-t="equipe"]')).toHaveAttribute('aria-selected', 'true');
     await page.locator('#list').getByRole('button', { name: /Embaucher/ }).click();

@@ -21,14 +21,14 @@ test.describe('tutoriel : le rail de Marcel', () => {
     await newGameWithTutorial(page);
     const guide = page.locator('#guide');
     await expect(guide).toBeVisible();
-    await expect(page.locator('#guideTxt')).toContainText('Maintiens le clic');
+    await expect(page.locator('#guideTxt')).toContainText('gros bouton rouge');
     // l'échéance ne court pas pendant le rail
     const left0 = await page.evaluate(() => { const s = (window as any).__rouages.G.s; return s.due - s.t; });
     // accélérer le temps valide la première étape
     await page.keyboard.down('Space');
     await page.waitForTimeout(1200);
     await page.keyboard.up('Space');
-    await expect(page.locator('#guideTxt')).toContainText('Le clic ne fabrique rien');
+    await expect(page.locator('#guideTxt')).toContainText('Le bouton ne fabrique rien');
     await page.locator('#guideOk').click();
     // embaucher : l'onglet Équipe est désigné, le reste du panneau est grisé
     await expect(page.locator('#tabs button[data-t="equipe"]')).toHaveClass(/guide-target/);

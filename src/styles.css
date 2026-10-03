@@ -72,6 +72,50 @@ kbd {
 .gauge { flex: 0 0 auto; width: 170px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; }
 .gauge svg { width: 160px; height: 88px; display: block; }
 .gauge .lbl { font: 11px 'Share Tech Mono', ui-monospace, monospace; color: var(--muted); }
+/* Gros bouton rouge : maintenir = zone verte, mitrailler = zone rouge */
+.throttle { position: relative; flex: 0 0 auto; width: 92px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
+.th-plate {
+  font: 700 9px/1.05 'Share Tech Mono', ui-monospace, monospace; letter-spacing: .04em; color: #16140f; text-align: center;
+  background: linear-gradient(#f4ecd2, #d9cfae); border: 1px solid #6d6650; border-radius: 2px; padding: 2px 5px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.6), 0 1px 2px rgba(0,0,0,.4);
+}
+.th-plate small { display: block; font-size: 7px; font-weight: 400; color: #4a4536; }
+.th-well {
+  position: relative; width: 62px; height: 62px; border-radius: 50%; display: grid; place-items: center; perspective: 200px;
+  background: repeating-linear-gradient(-45deg, #f2b705 0 6px, #1b1d21 6px 12px);
+  box-shadow: inset 0 0 0 4px #2a2d32, 0 2px 4px rgba(0,0,0,.5);
+}
+.redbtn {
+  --glow: rgba(87,217,135,0);
+  position: relative; width: 46px; height: 46px; border-radius: 50%; padding: 0; cursor: pointer; border: 0;
+  background: radial-gradient(circle at 50% 50%, #f2b705 0 60%, #a07a04 61% 70%, #2a2d32 71%);
+  box-shadow: 0 0 0 2px #1b1d21, 0 0 14px 3px var(--glow);
+  touch-action: none; transition: box-shadow .12s;
+}
+.redbtn .cap {
+  position: absolute; inset: 5px; border-radius: 50%;
+  background: radial-gradient(circle at 36% 30%, #ff8a7a 0, #e8291b 32%, #a5140b 74%, #6e0b05 100%);
+  box-shadow: 0 4px 0 #5a0903, 0 6px 6px rgba(0,0,0,.55), inset 0 -2px 3px rgba(0,0,0,.35);
+  transition: transform .05s, box-shadow .05s;
+}
+.redbtn:hover .cap { filter: brightness(1.08); }
+.redbtn.down .cap { transform: translateY(3px); box-shadow: 0 1px 0 #5a0903, 0 2px 3px rgba(0,0,0,.5), inset 0 2px 4px rgba(0,0,0,.45); }
+.redbtn:focus-visible { outline: 3px solid #ffd84a; outline-offset: 3px; }
+/* capot de sécurité transparent : il se soulève au survol */
+.th-cover {
+  position: absolute; inset: 2px; border-radius: 50%; pointer-events: none; transform-origin: 50% 0;
+  background: radial-gradient(circle at 35% 25%, rgba(255,255,255,.45), rgba(200,220,240,.12) 45%, rgba(200,220,240,.18));
+  border: 1px solid rgba(255,255,255,.35); transition: transform .25s ease, opacity .25s;
+}
+.throttle:hover .th-cover, .throttle:focus-within .th-cover, .throttle.active .th-cover { transform: rotateX(72deg); opacity: .55; }
+.th-note {
+  position: absolute; right: -10px; bottom: 6px; transform: rotate(9deg); pointer-events: none;
+  font: 9px/1 'Chakra Petch', system-ui, sans-serif; color: #3a3326; background: #ffe680; padding: 3px 4px; box-shadow: 1px 2px 3px rgba(0,0,0,.35);
+}
+.throttle.red .th-well { animation: thShake .09s linear infinite; }
+.throttle.red .th-plate { background: #ff5a4a; color: #fff; border-color: #7a1d16; }
+.throttle.red .th-plate small { color: #ffe0dc; }
+@keyframes thShake { 0% { transform: translate(0, 0); } 25% { transform: translate(.7px, -.5px); } 50% { transform: translate(-.6px, .4px); } 75% { transform: translate(.4px, .6px); } }
 .lamps { display: grid; grid-template-columns: repeat(2, auto); gap: 6px 14px; align-content: center; font: 12px 'Share Tech Mono', ui-monospace, monospace; color: var(--muted); }
 .lamp { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
 .lamp i { width: 13px; height: 13px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #5a2622, #2a0d0b); box-shadow: inset 0 1px 2px rgba(0,0,0,.7), 0 1px 0 var(--plate-hi); }
@@ -262,7 +306,8 @@ kbd {
 .credits { margin-top: 20px; font-size: 12px; color: var(--muted); text-align: center; }
 
 @media (prefers-reduced-motion: reduce) {
-  .tag.red, .lamp.on i, .stage-hint.show { animation: none; }
+  .tag.red, .lamp.on i, .stage-hint.show, .throttle.red .th-well { animation: none; }
+  .th-cover, .redbtn .cap { transition: none; }
   .toast { animation: none; }
   .bar i { transition: none; }
 }
@@ -271,6 +316,9 @@ kbd {
   .gauge { width: 150px; }
   .gauge svg { width: 142px; height: 80px; }
   .lamps { gap: 5px 10px; }
+  .throttle { width: 84px; }
+  .th-plate { font-size: 8px; white-space: nowrap; padding: 2px 3px; }
+  .th-note { display: none; }
 }
 @media (max-height: 760px) {
   .console { min-height: 96px; padding: 7px 14px; }

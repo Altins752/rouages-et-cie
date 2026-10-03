@@ -22,7 +22,7 @@
       <div class="lcd-sub" id="obj"><span id="objL">Dette</span><b id="objR">—</b></div>
       <div class="lcd-sub"><span>Stock <b id="stock">0</b></span><span id="infoR"></span></div>
     </div>
-    <div class="gauge" id="gauge" title="Compte-tours : maintenir le clic sur l'usine (ou la barre d'espace) accélère le temps">
+    <div class="gauge" id="gauge" title="Compte-tours : le gros bouton rouge (ou la barre d'espace) accélère le temps">
       <svg viewBox="0 0 150 86" aria-label="Compte-tours, vitesse du temps" role="img">
         <path d="M14 78 A61 61 0 0 1 136 78" fill="none" stroke="#2b2f35" stroke-width="12"/>
         <path id="gRed" fill="none" stroke="#7a1d16" stroke-width="12"/>
@@ -33,6 +33,14 @@
         <text id="gTxt" x="75" y="70" text-anchor="middle" font-family="Share Tech Mono, monospace" font-size="14" fill="#ffb02e">×1,0</text>
       </svg>
       <div class="lbl">Vitesse du temps</div>
+    </div>
+    <div class="throttle" id="throttle">
+      <div class="th-plate" aria-hidden="true">NE PAS APPUYER<small>sauf si pressé</small></div>
+      <div class="th-well">
+        <button type="button" class="redbtn" id="btnGo" aria-label="Accélérer le temps : maintenir le bouton, ou appuyer très vite pour la zone rouge. Barre d'espace : même effet."><span class="cap"></span></button>
+        <span class="th-cover" aria-hidden="true"></span>
+      </div>
+      <span class="th-note" aria-hidden="true">Doucement ! — M.</span>
     </div>
     <div class="lamps" id="lamps">
       <div class="lamp" data-lamp="panne"><i></i>Panne</div>
@@ -51,7 +59,7 @@
     </div>
   </header>
   <main class="floor">
-    <section class="stage" id="stage" aria-label="L'usine. Maintenir le clic ou la barre d'espace pour accélérer le temps.">
+    <section class="stage" id="stage" aria-label="L'usine. Molette pour zoomer, glisser pour se déplacer.">
       <canvas id="glcv" aria-hidden="true"></canvas>
       <canvas id="cv" aria-hidden="true"></canvas>
       <canvas id="uicv" aria-hidden="true"></canvas>
