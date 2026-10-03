@@ -66,11 +66,11 @@ test.describe('prologue sur PC', () => {
     expect(after).toBeLessThan(before);
     await page.keyboard.press('2');
     await expect(page.locator('#tabs button[data-t="equipe"]')).toHaveAttribute('aria-selected', 'true');
-    await page.getByRole('button', { name: /Embaucher/ }).click();
+    await page.locator('#list').getByRole('button', { name: /Embaucher/ }).click();
     expect(await page.evaluate(() => (window as any).__rouages.G.s.workers.length)).toBe(2);
     await page.keyboard.press('4');
     await expect(page.locator('#tabs button[data-t="marche"]')).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByText('Dette de la forge')).toBeVisible();
+    await expect(page.locator('#list').getByText('Dette de la forge')).toBeVisible();
     await page.keyboard.press('h');
     await expect(page.getByRole('heading', { name: 'Aide' })).toBeVisible();
     await page.keyboard.press('Escape');
@@ -105,6 +105,28 @@ test.describe('prologue sur PC', () => {
     await page.keyboard.press(']');
     expect(await page.evaluate(() => (window as any).__rouages.G.factory)).toBe(0);
     await shot(page, 'confort');
+  });
+
+  test('carnet de Marcel : quête accomplie, aide pas à pas', async ({ page }) => {
+    await newGame(page);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    const carnet = page.locator('#quests');
+    await expect(carnet).toBeVisible();
+    await expect(carnet).toContainText('Embaucher un ouvrier');
+    await expect(carnet).toContainText('Rembourser la dette');
+    // l'aide ouvre la bulle, désigne l'onglet puis le bouton, et se valide en le faisant
+    await page.locator('[data-q="p-hire"]').click();
+    await expect(page.locator('#guide')).toBeVisible();
+    await expect(page.locator('#guideTxt')).toContainText('Équipe');
+    await expect(page.locator('#tabs button[data-t="equipe"]')).toHaveClass(/guide-target/);
+    await page.keyboard.press('2');
+    await expect(page.locator('[data-act="hire"]')).toHaveClass(/guide-target/);
+    await shot(page, 'guide');
+    await page.locator('[data-act="hire"]').click();
+    await expect(page.locator('#guide')).toBeHidden();
+    await expect(carnet).not.toContainText('Embaucher un ouvrier');
+    await expect(carnet).toContainText('Ouvrir un poste sur la chaîne 2');
   });
 
   test('sauvegarde : la partie reprend après rechargement', async ({ page }) => {

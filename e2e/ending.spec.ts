@@ -17,7 +17,7 @@ test.describe('acte IV, fin et bac à sable', () => {
     await expect(page.locator('#objL')).toContainText('Rachat de Ferrum');
     await shot(page, 'acte4');
     await page.keyboard.press('4');
-    await expect(page.getByText('Racheter Ferrum Industries')).toBeVisible();
+    await expect(page.locator('#list').getByText('Racheter Ferrum Industries')).toBeVisible();
   });
 
   test('racheter Ferrum : séquence finale, fin, puis bac à sable', async ({ page }) => {
@@ -45,7 +45,7 @@ test.describe('acte IV, fin et bac à sable', () => {
     });
     await page.keyboard.press('Escape');
     await page.keyboard.press('4');
-    const btn = page.getByRole('button', { name: /Racheter/ });
+    const btn = page.locator('#list').getByRole('button', { name: /Racheter/ });
     await expect(btn).toBeEnabled();
     await btn.click();
     // les lumières s'éteignent, puis la vieille forge se rallume

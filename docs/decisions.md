@@ -73,3 +73,11 @@ Format : date — décision — raison.
 - 2026-10-04 — Le rapport d'absence affiche un manque à gagner, au ton pince-sans-rire : bénéfice net estimé × durée totale de l'absence, moins ce qui a été gagné, sans plafond. Marcel le commente, ou le contrôleur de gestion une fois recruté. — Encourage à jouer en présence par l'humour, sans pénalité réelle.
 - 2026-10-04 — L'équipe de nuit se voit : la nuit, 1 à 3 gardiens font leur ronde avec une lampe dans chaque hall, et leur halo passe derrière les fenêtres en vue extérieure. — Invariant 9.
 - 2026-10-04 — L'IA du simulateur achète un niveau d'équipe de nuit quand il coûte moins de 2 % de la caisse. Campagne (graine 11) : calme 10 h 39, actif 5 h 23, zone rouge 2 h 44, critères respectés. — Vérifie que cet achat sans effet sur la production en présence ne déséquilibre pas la progression.
+
+## Quêtes : le carnet de Marcel (2026-10-04)
+
+- 2026-10-04 — Les jalons sont remplacés par des quêtes annoncées à l'avance (story/quests.ts) : 6 à 8 par acte dans un ordre conseillé, les trois premières non faites sont actives, l'objectif de l'acte s'affiche toujours en dernier. — Les jalons tombaient par surprise ; une quête annoncée guide le joueur vers chaque élément du jeu avant le gros objectif.
+- 2026-10-04 — Une quête faite d'avance se valide dès qu'elle devient active (récompense comprise). Les quêtes actives se déduisent de l'état : pas de changement de sauvegarde (les quêtes faites restent dans `milestones`). — Pas de pénalité pour qui joue dans un autre ordre ; aucune migration.
+- 2026-10-04 — Récompenses : quelques secondes de marché de l'acte (QUEST_REWARD dans balance.ts), ou un niveau d'outillage offert sur le poste le moins outillé (former un ouvrier à l'acte I, recruter les RH à l'acte II). L'objectif de l'acte ne rapporte rien et n'est bloqué par aucune quête. — Coups de pouce, pas raccourcis ; « jamais bloqué ».
+- 2026-10-04 — « Aide Marcel » (bouton ? de chaque quête) : une bulle pas à pas désigne l'onglet puis le bouton à utiliser (contour qui clignote, défilement automatique du panneau), et chaque étape d'action se valide en la faisant. Échap ou « Je connais, Marcel » la ferme. — Même moteur que le tutoriel à venir (ui/guide.ts).
+- 2026-10-04 — Campagne avec les quêtes (graine 11) : calme 10 h 05, actif 5 h 12, zone rouge 2 h 40 ; critères respectés.

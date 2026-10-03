@@ -351,6 +351,18 @@ export const KNOW_HOW: readonly KnowHowDef[] = [
 // ---------------------------------------------------------------- Divers
 
 /**
+ * Récompenses des quêtes (story/quests) : secondes de marché de l'acte, ou « tool » pour un
+ * niveau d'outillage offert sur le poste le moins outillé. L'objectif de l'acte ne rapporte rien.
+ */
+export const QUEST_REWARD: Record<string, number | 'tool'> = {
+  'p-hire': 1.25, 'p-team': 3, 'p-tool': 2.5, 'p-unit': 3, 'p-conveyor': 5, 'p-line': 6,
+  'i-research': 2, 'i-modern': 3, 'i-train': 'tool', 'i-promo': 2, 'i-foreman': 1, 'i-steel': 2, 'i-factory': 3, 'i-share': 5,
+  'ii-night': 1, 'ii-poly': 1, 'ii-hr': 'tool', 'ii-semi': 4, 'ii-wind': 2, 'ii-contract': 3, 'ii-methods': 2, 'ii-four': 6,
+  'iii-robot': 4, 'iii-tech': 3, 'iii-logistics': 2, 'iii-titane': 4, 'iii-controller': 2, 'iii-million': 5,
+  'iv-carbide': 6, 'iv-twelve': 8, 'iv-black': 10, 'iv-wind': 3, 'iv-diamond': 4,
+};
+
+/**
  * Équipe de nuit : ce que l'usine produit pendant l'absence du joueur.
  * Rendement = part de la cadence normale ; durée = temps de travail maximal par absence.
  */

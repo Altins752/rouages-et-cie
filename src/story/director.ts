@@ -3,17 +3,19 @@
  * Pur (aucun DOM) : utilisable par le jeu et par le simulateur.
  */
 import type { GameState, SimEvent } from '../sim/types';
-import { BEATS, MILESTONES, REPORT_PERIOD, controllerReport, eventMsgs } from './script';
+import { activeQuests, freeToolTarget, questReward } from './quests';
+import { BEATS, REPORT_PERIOD, controllerReport, eventMsgs } from './script';
 import type { Msg } from './script';
 
 export interface StoryOut {
   msgs: Msg[];
-  milestones: { id: string; label: string; reward: number }[];
+  /** Quêtes accomplies ce tour-ci, avec leur récompense (argent ou outillage offert). */
+  quests: { id: string; label: string; reward: number; tool: string }[];
 }
 
 /** Vérifie les paliers d'histoire et les jalons. Modifie `s.story` et accorde les récompenses. */
 export function storyTick(s: GameState, events: SimEvent[] = []): StoryOut {
-  const out: StoryOut = { msgs: [], milestones: [] };
+  const out: StoryOut = { msgs: [], quests: [] };
   for (const e of events) out.msgs.push(...eventMsgs(s, e));
   for (const b of BEATS) {
     if (s.story.seen[b.id] !== undefined) continue;
@@ -29,13 +31,21 @@ export function storyTick(s: GameState, events: SimEvent[] = []): StoryOut {
       out.msgs.push(controllerReport(s));
     }
   }
-  for (const ms of MILESTONES) {
-    if (s.milestones[ms.id] || ms.act !== s.act) continue;
-    if (!ms.check(s)) continue;
-    s.milestones[ms.id] = true;
-    const reward = Math.max(0, ms.reward(s));
-    s.money += reward;
-    out.milestones.push({ id: ms.id, label: ms.label, reward });
+  // Quêtes actives : accomplies dès que leur condition est remplie (s.milestones garde les faites).
+  for (const q of activeQuests(s)) {
+    if (!q.check(s)) continue;
+    s.milestones[q.id] = true;
+    const r = questReward(q);
+    let tool = '';
+    if (r.tool) {
+      const t = freeToolTarget(s);
+      if (t) {
+        s.tooling[t.tier][t.station]++;
+        tool = `${t.tier}:${t.station}`;
+      }
+    }
+    s.money += r.money;
+    out.quests.push({ id: q.id, label: q.label, reward: r.money, tool });
   }
   return out;
 }

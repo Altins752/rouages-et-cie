@@ -16,6 +16,8 @@ import { catchUp } from './sim/offline';
 import { createGame } from './sim/state';
 import type { GameState, SimEvent } from './sim/types';
 import { storyTick } from './story/director';
+import { guideActive, guideTick, stopGuide } from './ui/guide';
+import { resetQuests, updateQuests } from './ui/quests';
 import { endingMsgs } from './story/script';
 import { clearSave, hasSave, loadLocal, saveLocal } from './save/save';
 import * as U from './ui/actions';
@@ -27,7 +29,7 @@ import { initPanel, invalidatePanel, renderPanel, setTab } from './ui/panel';
 import { initTelex, telex, telexAdvance, telexClose, telexOpen } from './ui/telex';
 import { toast } from './ui/toast';
 import { showTooltip } from './ui/tooltip';
-import { ACT_NAMES, LEVEL_NAMES, MISSED_QUIPS, STATION_NAMES } from './ui/text';
+import { ACT_NAMES, LEVEL_NAMES, MISSED_QUIPS, STATION_NAMES, TIER_NAMES } from './ui/text';
 import { setPanelHooks } from './ui/views';
 
 // ------------------------------------------------------------------ Canvas
@@ -190,9 +192,13 @@ function handleEvents(events: SimEvent[]): void {
 function runStory(events: SimEvent[]): void {
   const out = storyTick(G.s, events);
   if (out.msgs.length) telex(out.msgs);
-  for (const m of out.milestones) {
+  for (const q of out.quests) {
     sfx('milestone');
-    toast(`🏅 Jalon : ${m.label}${m.reward > 0 ? ` (+${fmt(m.reward)} €)` : ''}`);
+    const tool = q.tool ? (() => {
+      const [t, st] = q.tool.split(':').map(Number);
+      return ` (outillage ${STATION_NAMES[st].toLowerCase()} offert, ${TIER_NAMES[t].toLowerCase()})`;
+    })() : '';
+    toast(`✅ Quête accomplie : ${q.label}${q.reward > 0 ? ` (+${fmt(q.reward)} €)` : ''}${tool}`);
   }
 }
 
@@ -249,6 +255,8 @@ window.addEventListener('pagehide', save);
 function begin(): void {
   G.started = true;
   G.paused = false;
+  stopGuide(true);
+  resetQuests();
   cam.fit(viewBounds(G.s).b, cw, ch, true);
   invalidatePanel();
   renderPanel();
@@ -423,6 +431,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (ov && ov !== 'title') closeOverlay();
     else if (telexOpen()) telexClose();
+    else if (guideActive()) stopGuide(true);
     return;
   }
   if (ov) {
@@ -608,11 +617,13 @@ function tick(now: number): void {
   ambientTick(view);
   saleTick(rdt);
   $('hint').classList.toggle('show', G.started && !G.paused && s.act === 0 && s.t < 120 && G.lastInput === 0 && !telexOpen());
+  guideTick();
   uiT += rdt;
   if (uiT > 0.2) {
     uiT = 0;
     updateConsole();
     renderPanel();
+    updateQuests();
   }
 }
 

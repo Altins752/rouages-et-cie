@@ -146,7 +146,7 @@ function vAtelier(s: GameState): View {
     });
     h += '</div></div>';
     const b = est ? est.lineBottleneck[l] : -1;
-    const robotsOnly = line.slots.every((m) => !m || m.tier >= ROBOT_TIER);
+    const robotsOnly = n > 0 && line.slots.every((m) => !m || m.tier >= ROBOT_TIER);
     const conv = robotsOnly ? 'robots : transfert automatique' : line.conveyor ? (active ? 'convoyeur en marche' : line.crank < 0 ? 'convoyeur sans ouvrier à la manivelle' : 'convoyeur à l’arrêt') : 'pièces portées à la main';
     k[`lt${l}`] = `${n}/4 postes`;
     k[`lc${l}`] = `${est && b >= 0 ? `${fmtP(est.flow[l][3] || est.rate[l][b])} pièce/s · goulot : ${STATION_NAMES[b].toLowerCase()} · ` : ''}${line.produced ? `${fmt(line.produced)} écrous · ` : ''}${conv}`;

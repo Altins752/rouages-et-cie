@@ -30,7 +30,6 @@ const BOURSE = 'Bourse de Paris';
 const m = (from: string, text: string): Msg => ({ from, text });
 const market = (a: number) => fmt(ACTS[a].market);
 const half = (a: number) => fmt(ACTS[a].market / 2);
-const working = (s: GameState) => s.workers.filter((w) => w.state !== 'train').length;
 /** Toutes les machines du site. */
 const allMachines = (s: GameState): Machine[] => s.factories.flatMap((f) => f.lines.flatMap((l) => l.slots.filter((x): x is Machine => !!x)));
 
@@ -277,44 +276,6 @@ export function endingMsgs(s: GameState): Msg[] {
 }
 
 // ------------------------------------------------------------- Jalons
-
-export interface Milestone {
-  id: string;
-  act: number;
-  label: string;
-  check: (s: GameState) => boolean;
-  /** Récompense en € (fonction de l'état au moment où le jalon est atteint). */
-  reward: (s: GameState) => number;
-}
-
-const pctMarket = (k: number) => (s: GameState) => Math.round(ACTS[Math.min(s.act, 4)].market * k);
-
-export const MILESTONES: Milestone[] = [
-  { id: 'p-first', act: 0, label: 'Premier écrou vendu', check: (s) => s.stats.sold >= 1, reward: () => 5 },
-  { id: 'p-team', act: 0, label: 'Quatre ouvriers à l’atelier', check: (s) => working(s) >= 4, reward: () => 15 },
-  { id: 'p-tool', act: 0, label: 'Premier outillage', check: (s) => s.tooling[0].some((x) => x > 0), reward: () => 10 },
-  { id: 'p-conveyor', act: 0, label: 'Premier convoyeur', check: (s) => s.factories[0].lines.some((l) => l.conveyor), reward: () => 15 },
-  { id: 'p-line', act: 0, label: 'Deux chaînes complètes', check: (s) => s.factories[0].lines.filter((l) => l.slots.every(Boolean)).length >= 2, reward: () => 25 },
-  { id: 'i-promo', act: 1, label: 'Premier opérateur promu', check: (s) => s.stats.promotions >= 1, reward: pctMarket(2) },
-  { id: 'i-machine', act: 1, label: 'Première machine', check: (s) => allMachines(s).some((x) => x.tier >= 1), reward: pctMarket(3) },
-  { id: 'i-steel', act: 1, label: 'Premier écrou en acier', check: (s) => s.factories.some((f) => f.material >= 1), reward: pctMarket(2) },
-  { id: 'i-share', act: 1, label: '25 % de la ville', check: (s) => s.act === 1 && s.market.shareEma >= 0.25, reward: pctMarket(5) },
-  { id: 'i-1000', act: 1, label: 'Mille écrous produits', check: (s) => s.stats.produced >= 1000, reward: pctMarket(4) },
-  { id: 'ii-semi', act: 2, label: 'Première machine semi-automatique', check: (s) => allMachines(s).some((x) => x.tier >= 2), reward: pctMarket(4) },
-  { id: 'ii-four', act: 2, label: 'Quatre usines', check: (s) => s.act === 2 && s.factories.length >= 4, reward: pctMarket(6) },
-  { id: 'ii-contract', act: 2, label: 'Premier contrat livré', check: (s) => s.stats.contractsDone >= 1, reward: pctMarket(3) },
-  { id: 'ii-green', act: 2, label: 'Première éolienne', check: (s) => s.energy.wind >= 1, reward: pctMarket(2) },
-  { id: 'iii-robot', act: 3, label: 'Premier robot', check: (s) => allMachines(s).some((x) => x.tier >= 3), reward: pctMarket(4) },
-  { id: 'iii-titane', act: 3, label: 'Écrous en titane', check: (s) => s.factories.some((f) => f.material >= 4), reward: pctMarket(4) },
-  { id: 'iii-staff', act: 3, label: 'Encadrement complet', check: (s) => Object.values(s.roles).every(Boolean), reward: pctMarket(5) },
-  { id: 'iii-million', act: 3, label: 'Un million d’écrous', check: (s) => s.stats.produced >= 1e6, reward: pctMarket(5) },
-  { id: 'iv-carbide', act: 4, label: 'Écrous en carbure', check: (s) => s.factories.some((f) => f.material >= 5), reward: (s) => Math.round(s.flow.revenue * 60) },
-  { id: 'iv-twelve', act: 4, label: 'Douze usines', check: (s) => s.act === 4 && s.factories.length >= 12, reward: (s) => Math.round(s.flow.revenue * 60) },
-  { id: 'iv-black', act: 4, label: 'Première usine dans le noir', check: (s) => s.factories.some((f) => f.lines.every((l) => l.slots.every((x) => !!x && x.tier === 4))), reward: (s) => Math.round(s.flow.revenue * 90) },
-  { id: 'iv-green', act: 4, label: 'Dix éoliennes', check: (s) => s.energy.wind >= 10, reward: (s) => Math.round(s.flow.revenue * 30) },
-  { id: 'iv-ten-million', act: 4, label: 'Dix millions d’écrous', check: (s) => s.stats.produced >= 1e7, reward: (s) => Math.round(s.flow.revenue * 60) },
-  { id: 'iv-diamond', act: 4, label: 'Écrous en diamant', check: (s) => s.factories.some((f) => f.material >= 6), reward: (s) => Math.round(s.flow.revenue * 30) },
-];
 
 export const MATERIAL_COUNT = MATERIALS.length;
 export const materialName = (i: number) => MATERIAL_NAMES[i];

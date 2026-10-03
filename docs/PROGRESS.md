@@ -100,7 +100,7 @@ Nouvelle partie obligatoire (sauvegarde v3, les anciennes sont refusées). Vocab
 ## Suite (plan validé le 2026-10-03)
 
 - [x] Équipe de nuit : rendement (50 niveaux) et durée (10 paliers), acte II, absence courte rattrapée, manque à gagner au rapport d'absence, gardiens dans la scène, sauvegarde v4 (migration v3 → v4) ; campagne actif 5 h 23
-- [ ] Quêtes : 2 à 3 actives, petites récompenses, « Aide Marcel », menant à l'objectif de l'acte sans le bloquer ; remplacent les jalons
+- [x] Quêtes : carnet de Marcel (3 actives + l'objectif de l'acte), récompenses en argent ou outillage offert, « Aide Marcel » pas à pas (bulle + cible qui clignote) ; remplacent les jalons ; campagne actif 5 h 12
 - [ ] Rail de Marcel : complet au prologue, court à chaque acte ; étapes toujours faisables, dette gelée, « Je connais, Marcel », option
 - [ ] Commandes spéciales dès l'acte I, calées sur la cadence mesurée (3 difficultés)
 - [ ] Traits des ouvriers
