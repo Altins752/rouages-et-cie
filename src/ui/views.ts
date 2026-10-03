@@ -1,9 +1,9 @@
 /** Contenu des onglets du panneau. Chaque vue renvoie du HTML stable et des valeurs à jour. */
 import {
-  ACTS, CONTRACTS, ENERGY, KNOW_HOW, LINES, MATERIALS, METHODS, NIGHT, POLY, RESEARCH_EXTRA, ROBOT_TIER, ROLES, ROLE_WARN_SHARE,
+  ACTS, CHALLENGE_CAPITAL, CHALLENGES, CONTRACTS, ENERGY, KNOW_HOW, LINES, MATERIALS, METHODS, NIGHT, POLY, RESEARCH_EXTRA, ROBOT_TIER, ROLES, ROLE_WARN_SHARE,
   TIER_COUNT, TIER_MIN_ACT, TIER_OPERATOR_LEVEL, TIER_RESEARCH, TOOL_MAX, TRAINING, WEAR,
 } from '../data/balance';
-import type { KnowHowId, RoleId } from '../data/balance';
+import type { ChallengeId, KnowHowId, RoleId } from '../data/balance';
 import { G } from '../game';
 import type { Tab } from '../game';
 import * as A from '../sim/actions';
@@ -23,7 +23,7 @@ import type { View } from './panel';
 import { dataView } from './data';
 import { revenueRate } from './rates';
 import {
-  ACT_NAMES, KIND_NAMES, SPOT_LEVEL_NAMES, TRAIT_DESC, TRAIT_NAMES, KNOW_HOW_DESC, KNOW_HOW_NAMES, LEVEL_NAMES, MACHINE_NAMES, MARKET_NAMES, MATERIAL_DESC,
+  ACT_NAMES, CHALLENGE_DESC, CHALLENGE_NAMES, KIND_NAMES, SPOT_LEVEL_NAMES, TRAIT_DESC, TRAIT_NAMES, KNOW_HOW_DESC, KNOW_HOW_NAMES, LEVEL_NAMES, MACHINE_NAMES, MARKET_NAMES, MATERIAL_DESC,
   MATERIAL_NAMES, ROLE_DATA, ROLE_DECISION, ROLE_NAMES, STATION_ICONS, STATION_NAMES, STATION_ROLE, TIER_NAMES, TIER_SHORT,
 } from './text';
 
@@ -295,6 +295,28 @@ function nightSection(s: GameState, d: Record<string, boolean>, k: Record<string
   return h;
 }
 
+/** Défis du bac à sable : en cours (progression, abandon) ou à relever. */
+function challengeSection(s: GameState, k: Record<string, string>, w: Record<string, number>): string {
+  let h = '<div class="sec">Défis<span>un site presque vide, une contrainte</span></div>';
+  const cur = s.challenge?.state === 'on' ? s.challenge : null;
+  if (cur) {
+    const def = CHALLENGES.find((c) => c.id === cur.id)!;
+    h += `<div class="card col rec"><div class="row"><div class="ic" aria-hidden="true">🎯</div><div class="info"><div class="nm">${CHALLENGE_NAMES[cur.id]} <span class="tag">en cours</span></div><div class="vis">${CHALLENGE_DESC[cur.id]}</div><div class="ef" data-k="chp"></div></div></div>`;
+    h += '<div class="bar"><i data-w="chp" style="background:#57d987"></i></div>';
+    h += '<div class="btns"><button class="buy plain" type="button" data-act="ch-abandon" data-fk="cha"><span class="c">Abandonner</span><small>le site reste en bac à sable</small></button></div></div>';
+    const done = def.produced !== undefined ? (s.stats.produced - cur.p0) / def.produced : (def.cash !== undefined ? Math.max(0, s.money) / def.cash : 0);
+    w.chp = Math.min(1, done);
+    k.chp = `${Math.floor(Math.min(1, done) * 100)} %${def.time !== undefined ? ` · reste ${mmss(def.time - (s.t - cur.t0))}` : ''}`;
+    return h;
+  }
+  for (const c of CHALLENGES) {
+    const won = !!s.milestones[`challenge-${c.id}`];
+    h += `<div class="card"><div class="ic" aria-hidden="true">${won ? '🏆' : '🎯'}</div><div class="info"><div class="nm">${CHALLENGE_NAMES[c.id]}${won ? ' <span class="tag green">réussi</span>' : ''}</div><div class="vis">${CHALLENGE_DESC[c.id]} On repart avec ${euros(CHALLENGE_CAPITAL)}, les recherches et le savoir-faire.</div></div><button class="buy" type="button" data-act="challenge" data-i="${c.id}" data-fk="ch${c.id}"><span class="c">Relever</span><small>nouveau site</small></button></div>`;
+  }
+  if (s.challenge?.state === 'lost') h += `<div class="note">Défi « ${CHALLENGE_NAMES[s.challenge.id]} » manqué. On peut le retenter.</div>`;
+  return h;
+}
+
 /** Filtre de la liste des ouvriers : -1 tous, 0 à 3 une chaîne, 4 les polyvalents. */
 let workerFilter = -1;
 
@@ -556,6 +578,9 @@ function vMarche(s: GameState): View {
     h += `<div class="card col"><div class="row"><div class="ic" aria-hidden="true">🏗</div><div class="info"><div class="nm">Nouveau site (prestige)</div><div class="vis">Repartir de zéro ailleurs, avec ${euros(A.moveCapital(s))} de capital et +${gain} point${gain > 1 ? 's' : ''} de savoir-faire. Les recherches sont conservées.</div></div></div>`;
     h += `<div class="btns"><button class="buy" type="button" data-act="new-site" data-b="site" data-fk="site"><span class="c">${gain} pt${gain > 1 ? 's' : ''}</span><small>Bâtir un nouveau site</small></button></div></div>`;
     d.site = gain < 1;
+    h += challengeSection(s, k, w);
+    const ch = s.challenge;
+    sig += `|C${ch ? `${ch.id}${ch.state}` : '-'}`;
   }
   // Contrats
   if (s.act >= CONTRACTS.spotAct && s.act <= 4) {
@@ -749,6 +774,12 @@ export function onPanelAction(act: string, ds: DOMStringMap): void {
       break;
     case 'new-site':
       hooks.newSite();
+      break;
+    case 'challenge':
+      U.startChallenge(i as ChallengeId);
+      break;
+    case 'ch-abandon':
+      U.abandonChallenge();
       break;
   }
 }

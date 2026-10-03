@@ -25,6 +25,12 @@ export const migrations: Record<number, Migration> = {
     st.night ??= { rate: 0, duration: 0 };
     return d;
   },
+  // v5 → v6 : défis du bac à sable, aucun en cours.
+  5: (d) => {
+    const st = d.state as { challenge?: unknown };
+    st.challenge ??= null;
+    return d;
+  },
   // v4 → v5 : caractère des ouvriers ; ceux déjà embauchés sont ordinaires.
   4: (d) => {
     const st = d.state as { workers?: { trait?: string }[] };

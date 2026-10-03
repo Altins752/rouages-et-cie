@@ -36,7 +36,7 @@ import { initPanel, invalidatePanel, renderPanel, setTab } from './ui/panel';
 import { initTelex, telex, telexAdvance, telexClose, telexOpen } from './ui/telex';
 import { toast } from './ui/toast';
 import { showTooltip } from './ui/tooltip';
-import { ACT_NAMES, LEVEL_NAMES, MISSED_QUIPS, STATION_NAMES, TIER_NAMES } from './ui/text';
+import { ACT_NAMES, CHALLENGE_NAMES, LEVEL_NAMES, MISSED_QUIPS, STATION_NAMES, TIER_NAMES } from './ui/text';
 import { setPanelHooks } from './ui/views';
 
 // ------------------------------------------------------------------ Canvas
@@ -167,6 +167,17 @@ function handleEvents(events: SimEvent[]): void {
       }
       case 'goal':
         sfx('milestone');
+        break;
+      case 'challenge':
+        if (e.won) {
+          sfx('milestone');
+          unlock(`challenge-${e.id}`);
+          toast(`🏆 Défi réussi : ${CHALLENGE_NAMES[e.id]} !`);
+        } else {
+          sfx('fail');
+          toast(`⌛ Défi manqué : ${CHALLENGE_NAMES[e.id]}. On peut le retenter (onglet Marché).`, true);
+        }
+        invalidatePanel();
         break;
       case 'ferrum':
         sfx('warn');

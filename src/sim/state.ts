@@ -3,8 +3,8 @@ import type { KnowHowId, RoleId, TraitId } from '../data/balance';
 import { rand } from './rng';
 import type { Factory, GameState, Line, Machine, Worker, WorkerKind } from './types';
 
-/** v3 : refonte en usines et chaînes ; v4 : équipe de nuit ; v5 : caractère des ouvriers. Les parties v1 et v2 ne sont pas reprises. */
-export const SAVE_VERSION = 5;
+/** v3 : refonte en usines et chaînes ; v4 : équipe de nuit ; v5 : caractère des ouvriers ; v6 : défis. Les parties v1 et v2 ne sont pas reprises. */
+export const SAVE_VERSION = 6;
 
 export const WORKER_NAMES = [
   'Marcel', 'Josette', 'Ahmed', 'Lucie', 'Paulo', 'Inès', 'Gégé', 'Nadia', 'Yvon', 'Sonia', 'Kévin', 'Odile',
@@ -93,6 +93,7 @@ export function createGame(seed = 1): GameState {
     tooling: Array.from({ length: TIER_COUNT }, () => [0, 0, 0, 0]),
     methods: { targets: [0, 0, 0, 0], budget: 1, active: false },
     night: { rate: 0, duration: 0 },
+    challenge: null,
     nextId: 0,
     nameIdx: 0,
     stock: MATERIALS.map(() => 0),

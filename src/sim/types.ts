@@ -1,4 +1,4 @@
-import type { KnowHowId, RoleId, TraitId } from '../data/balance';
+import type { ChallengeId, KnowHowId, RoleId, TraitId } from '../data/balance';
 
 /** Un poste d'une chaîne : établi ou machine. */
 export interface Machine {
@@ -222,6 +222,8 @@ export interface GameState {
   methods: Methods;
   /** Équipe de nuit : niveaux de rendement et de durée (gardés au déménagement). */
   night: { rate: number; duration: number };
+  /** Défi du bac à sable en cours (ou le dernier, réussi ou perdu). */
+  challenge: { id: ChallengeId; t0: number; p0: number; state: 'on' | 'won' | 'lost' } | null;
   nextId: number;
   nameIdx: number;
   stock: number[];
@@ -273,6 +275,7 @@ export type SimEvent =
   | { type: 'goal' }
   | { type: 'ferrum'; event: 'poach' | 'war' | 'exclusive'; name?: string }
   | { type: 'warEnd' }
+  | { type: 'challenge'; id: ChallengeId; won: boolean }
   | { type: 'spotDone'; id: number; value: number; level: number; late: boolean }
   | { type: 'spotFailed'; id: number }
   | { type: 'longBroken'; id: number }

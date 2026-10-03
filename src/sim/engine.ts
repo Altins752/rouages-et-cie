@@ -12,12 +12,12 @@
 import {
   ACTS, BUFFER_CAP, CARRY_TIME, CONTRACTS, CRISIS_GAP, ENERGY, FERRUM, MATERIALS, METHODS, MORALE, POLY, PROLOGUE,
   ROBOT_NO_TECH_FACTOR, ROBOT_TIER, BLACK_TIER, ROLES, TIER_KW, TIER_OPERATOR_LEVEL, WALK_TIME, WEAR, WORKER_SALARY,
-  DOOR_POS, REPUTATION, ASSIGN, MATE, TRAITS,
+  DOOR_POS, REPUTATION, ASSIGN, MATE, TRAITS, CHALLENGES,
 } from '../data/balance';
 import { daylight, windFactor } from './env';
 import {
   canPromote, canTrain, clamp, knowHow, machineCycle, modernizeCost, moraleActive, moraleCap, priceMult,
-  promotionCost, promotionTime, scrapRate, trainingCost, trainingTime, trait, unitPrice, workerSpeed,
+  promotionCost, promotionTime, scrapRate, tierCap, trainingCost, trainingTime, trait, unitPrice, workerSpeed,
 } from './formulas';
 import { rand, randInt, randRange } from './rng';
 import { machines } from './state';
@@ -128,6 +128,7 @@ export function step(s: GameState, dt: number, input: StepInput): void {
   for (let m = 0; m < prodByMat.length; m++) s.market.prodRate[m] += (prodByMat[m] / dt - s.market.prodRate[m]) * (1 - Math.exp(-dt / 30));
   if (s.act >= 1 && s.act < 5) s.stats.maxShare = Math.max(s.stats.maxShare, s.market.shareEma);
   goal(s, dt);
+  challenge(s);
   ferrum(s);
   crisis(s);
 
@@ -758,7 +759,7 @@ function methodsDecisions(s: GameState): void {
       }
       for (let l = 0; l < f.lines.length; l++) {
         const m = f.lines[l].slots[st];
-        if (!m || m.tier >= target || m.tier + 1 > s.research.tier || m.tier + 1 >= 5) continue;
+        if (!m || m.tier >= target || m.tier + 1 > s.research.tier || m.tier + 1 >= 5 || m.tier + 1 > tierCap(s)) continue;
         if (m.post >= 0 && m.tier + 1 < ROBOT_TIER) {
           const w = s.workers.find((x) => x.id === m.post);
           if (w && w.level < TIER_OPERATOR_LEVEL[m.tier + 1]) continue;
@@ -1088,6 +1089,24 @@ function morale(s: GameState, dt: number): void {
     if (w.load > MORALE.highLoad) w.morale -= (MORALE.dropPerMin / 60) * dt * trait(w).fatigue * (mate ? MATE.drop : 1);
     else if (w.load < MORALE.lowLoad) w.morale += (MORALE.risePerMin / 60) * dt * rec * (mate ? MATE.recovery : 1);
     w.morale = clamp(w.morale, 0, cap);
+  }
+}
+
+// ---------------------------------------------------------- Défi du bac à sable
+
+function challenge(s: GameState): void {
+  const ch = s.challenge;
+  if (!ch || ch.state !== 'on') return;
+  const def = CHALLENGES.find((c) => c.id === ch.id);
+  if (!def) return;
+  const won = (def.produced === undefined || s.stats.produced - ch.p0 >= def.produced) && (def.cash === undefined || s.money >= def.cash);
+  if (won) {
+    ch.state = 'won';
+    s.milestones[`challenge-${ch.id}`] = true;
+    emit(s, { type: 'challenge', id: ch.id, won: true });
+  } else if (def.time !== undefined && s.t - ch.t0 > def.time) {
+    ch.state = 'lost';
+    emit(s, { type: 'challenge', id: ch.id, won: false });
   }
 }
 

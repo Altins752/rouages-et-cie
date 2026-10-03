@@ -124,3 +124,7 @@ Format : date — décision — raison.
 ## Radio de l'atelier (2026-10-04)
 
 - 2026-10-04 — Une petite musique synthétisée (Web Audio, aucun fichier) qui suit le site : bal musette à la forge (prologue et acte I), swing manouche dans la région, funk années 80 dans le pays, électro dans le monde et le bac à sable. Aux premiers actes, elle passe par un filtre de vieux poste radio qui s'ouvre avec les actes. Bouton « Radio » au pupitre, réglage gardé ; elle suit le bouton Son. — L'ambiance raconte aussi la progression ; synthétisée pour rester dans la règle « aucun fichier audio ».
+
+## Défis du bac à sable (2026-10-04)
+
+- 2026-10-04 — Trois défis à relever après la fin, chacun sur un site presque vide (1 000 €, recherches et savoir-faire gardés) : « Sans licencier » (500 000 écrous, licenciement refusé), « L'artisan » (1 M€ en caisse, machines mécaniques au plus, ingénieur méthodes compris), « Contre la montre » (3 500 écrous en 30 min de jeu). Réussir débloque un succès ; on peut abandonner ou retenter. Sauvegarde v6 (migration v5 → v6). — Le capital du bac à sable (60 M€ en simulation) rendait tout défi trivial ; les objectifs sont calés sur l'IA du simulateur (99, 137 et 28 min de jeu).

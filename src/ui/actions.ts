@@ -3,7 +3,7 @@
  * (son, message, particules). Le verbe du bouton est repris dans le message.
  */
 import { sfx } from '../audio/audio';
-import type { KnowHowId, RoleId } from '../data/balance';
+import type { ChallengeId, KnowHowId, RoleId } from '../data/balance';
 import { G } from '../game';
 import { dust, sparks } from '../render/particles';
 import { worldOfStation } from '../render/scene';
@@ -12,7 +12,7 @@ import type { EnergyKind, ResearchId, Result } from '../sim/actions';
 import { dur, fmt, fmtP } from './format';
 import { TIER_OPERATOR_LEVEL } from '../data/balance';
 import { nightDuration, nightRate, promotionTime, trainingTime } from '../sim/formulas';
-import { KNOW_HOW_NAMES, LEVEL_NAMES, MACHINE_NAMES, MATERIAL_NAMES, ROLE_NAMES, STATION_NAMES, TIER_NAMES, TRAIT_DESC, TRAIT_NAMES } from './text';
+import { CHALLENGE_NAMES, KNOW_HOW_NAMES, LEVEL_NAMES, MACHINE_NAMES, MATERIAL_NAMES, ROLE_NAMES, STATION_NAMES, TIER_NAMES, TRAIT_DESC, TRAIT_NAMES } from './text';
 import { toast } from './toast';
 
 function done(r: Result, okText: string | ((r: Result) => string), sound: Parameters<typeof sfx>[0] = 'buy'): boolean {
@@ -48,7 +48,9 @@ export function hirePoly(fi = G.factory): void {
 }
 
 export function fire(id: number): void {
-  done(A.fire(G.s, id), (r) => `${r.ok ? r.info : ''} licencié·e : son poste est vacant`, 'click');
+  const r = A.fire(G.s, id);
+  done(r, (x) => `${x.ok ? x.info : ''} licencié·e : son poste est vacant`, 'click');
+  if (!r.ok && r.reason === 'défi') toast('Défi « Sans licencier » en cours : personne ne part', true);
 }
 
 export function train(id: number): void {
@@ -213,6 +215,14 @@ export function move(): boolean {
   }
   sfx('denied');
   return false;
+}
+
+export function startChallenge(id: ChallengeId): void {
+  if (done(A.startChallenge(G.s, id), `🎯 Défi relevé : ${CHALLENGE_NAMES[id]}. Nouveau site, bonne chance !`, 'move')) G.factory = 0;
+}
+
+export function abandonChallenge(): void {
+  done(A.abandonChallenge(G.s), 'Défi abandonné', 'click');
 }
 
 export function newSite(): boolean {

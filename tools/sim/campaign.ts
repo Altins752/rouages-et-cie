@@ -196,4 +196,5 @@ function main(): void {
   console.log(okAll ? '\nCritères d’acceptation : respectés' : '\nCritères d’acceptation : NON respectés');
 }
 
-main();
+// lancé directement (npm run sim), pas quand un script importe runProfile
+if (/campaign.ts$/.test(process.argv[1] ?? '')) main();

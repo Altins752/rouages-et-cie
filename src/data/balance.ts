@@ -362,6 +362,20 @@ export const KNOW_HOW: readonly KnowHowDef[] = [
 // ---------------------------------------------------------------- Divers
 
 /**
+ * Défis du bac à sable : un nouveau site avec une contrainte et un objectif.
+ * produced : écrous à produire depuis le début du défi ; cash : caisse à atteindre ;
+ * maxTier : palier de machine le plus haut permis ; time : durée limite (s de jeu).
+ */
+export type ChallengeId = 'nofire' | 'artisan' | 'chrono';
+/** Capital de départ d'un défi : on repart presque de rien (recherches et savoir-faire gardés). */
+export const CHALLENGE_CAPITAL = 1000;
+export const CHALLENGES: { id: ChallengeId; produced?: number; cash?: number; maxTier?: number; time?: number }[] = [
+  { id: 'nofire', produced: 500_000 },
+  { id: 'artisan', cash: 1_000_000, maxTier: 1 },
+  { id: 'chrono', produced: 3500, time: 1800 },
+];
+
+/**
  * Caractère des ouvriers, tiré à l'embauche (poids). speed : cadence ; fatigue : vitesse de
  * baisse du moral ; wear : usure de sa machine ; training : prix et durée des formations.
  * Le « bon camarade » remonte le moral de sa chaîne (MATE).

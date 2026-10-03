@@ -47,4 +47,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'bitter', name: 'Le prix du progrès', desc: 'Finir… avec plus de licenciements que de reconversions.', check: (s) => s.ended && s.ending === 'bitter' },
   { id: 'sandbox', name: 'Et maintenant ?', desc: 'Continuer en bac à sable après la fin.', check: (s) => s.act === 5 },
   { id: 'postcard', name: 'Souvenir', desc: 'Prendre une carte postale de son usine.' },
+  { id: 'challenge-nofire', name: 'Patron au grand cœur', desc: 'Réussir le défi « Sans licencier ».' },
+  { id: 'challenge-artisan', name: 'L’amour du travail bien fait', desc: 'Réussir le défi « L’artisan ».' },
+  { id: 'challenge-chrono', name: 'Chronomètre en main', desc: 'Réussir le défi « Contre la montre ».' },
 ];

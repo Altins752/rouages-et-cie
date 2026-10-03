@@ -72,6 +72,11 @@ test.describe('acte IV, fin et bac à sable', () => {
     await page.keyboard.press('4');
     await expect(page.getByText('Nouveau site (prestige)')).toBeVisible();
     await expect(page.locator('#objL')).toContainText('Bac à sable');
+    // défis : relever « Contre la montre », l'afficheur suit la progression
+    await expect(page.locator('#list .sec', { hasText: 'Défis' })).toBeVisible();
+    await page.locator('[data-act="challenge"][data-i="chrono"]').click();
+    await expect(page.locator('#objL')).toContainText('Défi : Contre la montre');
+    await expect(page.locator('#list')).toContainText('Abandonner');
     await shot(page, 'bac-a-sable');
   });
 });

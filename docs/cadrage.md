@@ -281,6 +281,10 @@ Demandée après les premières parties (acte III déficitaire, recettes invisib
 
 Durées simulées (jeu actif, graine 11) : prologue 6,5 min, acte I 39, acte II 47, acte III 55, acte IV 169, total 5 h 16.
 
+## 23. Rejouabilité et partage (4 octobre 2026)
+
+Quêtes du carnet de Marcel (remplacent les jalons), tutoriel sur rails, succès (29 + 3 de défis), carnet du grand-père en 12 pages, radio de l'atelier, carte postale et carte de fin, défis du bac à sable (site à 1 000 € ; « Sans licencier » 500 000 écrous, « L'artisan » 1 M€ au mécanique, « Contre la montre » 3 500 écrous en 30 min). Succès et pages du carnet sont gardés dans le navigateur, d'une partie à l'autre.
+
 ## 22. Caractère des ouvriers (4 octobre 2026)
 
 Tiré à l'embauche : ordinaire 40 %, rapide 18 % (+15 % de cadence, fatigue × 1,6), endurant 16 % (−8 %, fatigue × 0,4), bon camarade 10 % (moral de sa chaîne : baisse × 0,8, remontée × 1,4), soigneux 8 % (usure × 0,7), doué 8 % (formations × 0,6). Marché du quartier : 5 €/s.

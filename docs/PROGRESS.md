@@ -109,7 +109,7 @@ Nouvelle partie obligatoire (sauvegarde v3, les anciennes sont refusées). Vocab
 - [x] Succès humoristiques (29, gardés dans le navigateur d'une partie à l'autre, liste dans le menu)
 - [x] Carnet du grand-père : 12 pages à collectionner (menu), gardées d'une partie à l'autre
 - [x] Radio de l'atelier : 4 styles synthétisés selon le site, bouton au pupitre
-- [ ] Défis de bac à sable
+- [x] Défis du bac à sable : sans licencier, l'artisan, contre la montre (sauvegarde v6)
 
 ## Durées simulées
 

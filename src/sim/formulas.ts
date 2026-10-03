@@ -1,6 +1,6 @@
 import {
   ACTS, CONVEYOR, CYCLE, FACTORY_COPY_FACTOR, FERRUM, HALL_GROWTH, KNOW_HOW, MARCEL_PRODUCTIVITY, MATERIALS,
-  MATERIAL_STATION_SHARE, MORALE, NIGHT, POLY, TRAITS, PRESTIGE, PROMOTION, REPUTATION, RESALE, ROBOT_TIER, SCRAP, TOOL_COST_FACTOR,
+  CHALLENGES, MATERIAL_STATION_SHARE, MORALE, NIGHT, POLY, TRAITS, PRESTIGE, PROMOTION, REPUTATION, RESALE, ROBOT_TIER, SCRAP, TOOL_COST_FACTOR,
   TOOL_COST_GROWTH, TOOL_GAIN, TOOL_TAU, TRAINING, UNIT_GROWTH, UNIT_PRICE,
 } from '../data/balance';
 import type { KnowHowId } from '../data/balance';
@@ -196,6 +196,12 @@ export function robotFactory(f: Factory): boolean {
 /** Le convoyeur d'une chaîne sert-il (au moins un poste tenu par un humain) ? */
 export function crankUseful(line: Factory['lines'][number]): boolean {
   return line.conveyor && line.slots.some((m) => m && m.tier < ROBOT_TIER);
+}
+
+/** Palier de machine le plus haut permis par le défi en cours (Infinity sans défi). */
+export function tierCap(s: GameState): number {
+  if (s.challenge?.state !== 'on') return Infinity;
+  return CHALLENGES.find((c) => c.id === s.challenge!.id)?.maxTier ?? Infinity;
 }
 
 export function lineComplete(f: Factory, l: number): boolean {

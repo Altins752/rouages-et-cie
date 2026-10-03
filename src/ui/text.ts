@@ -106,6 +106,14 @@ export const TRAIT_DESC: Record<string, string> = {
   gifted: 'formations 40 % moins chères et plus courtes',
 };
 
+/** Défis du bac à sable. */
+export const CHALLENGE_NAMES: Record<string, string> = { nofire: 'Sans licencier', artisan: 'L’artisan', chrono: 'Contre la montre' };
+export const CHALLENGE_DESC: Record<string, string> = {
+  nofire: '500 000 écrous produits sans licencier personne.',
+  artisan: '1 million d’euros en caisse avec des machines mécaniques au plus.',
+  chrono: '3 500 écrous en 30 minutes de jeu.',
+};
+
 export const SPOT_LEVEL_NAMES = ['Tranquille', 'Serrée', 'Coup de bourre'];
 
 export const ACT_NAMES = ['Prologue — La dette', 'Acte I — La ville', 'Acte II — La région', 'Acte III — Le pays', 'Acte IV — Le monde', 'Bac à sable'];

@@ -1,11 +1,11 @@
 /** Pupitre : afficheur LCD (caisse, objectif, stock), compte-tours, voyants. */
-import { ACTS, TACHO } from '../data/balance';
+import { ACTS, CHALLENGES, TACHO } from '../data/balance';
 import { G, inRed, vmax } from '../game';
 import { estimateSite } from '../sim/analysis';
 import { $, setText } from './dom';
 import { fmt, fmtMoney, fmtP, mmss, pct } from './format';
 import { netRate, revenueRate, trackRates } from './rates';
-import { SITE_NAMES } from './text';
+import { CHALLENGE_NAMES, SITE_NAMES } from './text';
 
 let lastVm = -1;
 let rateCache = { t: -1e9, info: '' };
@@ -34,8 +34,17 @@ export function updateConsole(): void {
     setText($('objR'), `${fmt(Math.max(0, s.money))} / ${fmt(g.amount)} €`);
     obj.classList.toggle('good', s.market.goalReached);
   } else {
-    setText($('objL'), 'Bac à sable');
-    setText($('objR'), `${fmt(s.stats.produced)} écrous produits`);
+    const ch = s.challenge?.state === 'on' ? s.challenge : null;
+    if (ch) {
+      const def = CHALLENGES.find((c) => c.id === ch.id)!;
+      setText($('objL'), `Défi : ${CHALLENGE_NAMES[ch.id]}`);
+      setText($('objR'), def.produced !== undefined
+        ? `${fmt(s.stats.produced - ch.p0)} / ${fmt(def.produced)} écrous${def.time !== undefined ? ` · ${mmss(def.time - (s.t - ch.t0))}` : ''}`
+        : `${fmt(Math.max(0, s.money))} / ${fmt(def.cash ?? 0)} €`);
+    } else {
+      setText($('objL'), 'Bac à sable');
+      setText($('objR'), `${fmt(s.stats.produced)} écrous produits`);
+    }
   }
   setText($('stock'), fmt(s.stock.reduce((a, b) => a + b, 0)));
   const now = performance.now();

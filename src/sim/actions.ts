@@ -3,14 +3,14 @@
  * renvoie un résultat. Aucune action n'accède au DOM.
  */
 import {
-  ACTS, CANTEEN_COST, CONTRACTS, ENERGY, KNOW_HOW, LINES, MATERIALS, METHODS, NIGHT, POLY, PRESTIGE, PROLOGUE,
+  ACTS, CANTEEN_COST, CHALLENGE_CAPITAL, CONTRACTS, ENERGY, KNOW_HOW, LINES, MATERIALS, METHODS, NIGHT, POLY, PRESTIGE, PROLOGUE,
   RESEARCH_EXTRA, REPUTATION, ROBOT_TIER, ROLES, SANDBOX_ACT, TIER_COUNT, TIER_MIN_ACT, TIER_OPERATOR_LEVEL,
   TIER_RESEARCH, TOOL_MAX, DOOR_POS,
 } from '../data/balance';
-import type { KnowHowId, RoleId } from '../data/balance';
+import type { ChallengeId, KnowHowId, RoleId } from '../data/balance';
 import { machineRank, modernizeMachine, releaseWorker, spotRoom, startCourse } from './engine';
 import {
-  canPromote, canTrain, conveyorCost, crankUseful, factoryValue, knowHow, knowHowCost, knowHowGain, machineCycle, materialOk,
+  canPromote, canTrain, conveyorCost, crankUseful, tierCap, factoryValue, knowHow, knowHowCost, knowHowGain, machineCycle, materialOk,
   modernizeCost, newFactoryCost, nightCost, promotionCost, toolCost, trainingCost, unitPrice,
 } from './formulas';
 import { newFactory, newMachine, newWorker, rollTrait } from './state';
@@ -95,6 +95,7 @@ export function hirePoly(s: GameState, fi: number): Result {
 export function fire(s: GameState, id: number): Result {
   const w = s.workers.find((x) => x.id === id);
   if (!w || w.name === 'Marcel') return fail('personne');
+  if (s.challenge?.state === 'on' && s.challenge.id === 'nofire') return fail('défi');
   releaseWorker(s, w);
   const f = s.factories[w.factory];
   if (f) {
@@ -225,6 +226,7 @@ export function addUnit(s: GameState, fi: number, st: number, line = -1): Result
 }
 
 export function tierAllowed(s: GameState, tier: number): boolean {
+  if (tier > tierCap(s)) return false;
   return tier < TIER_COUNT && s.research.tier >= tier && s.act >= TIER_MIN_ACT[tier];
 }
 
@@ -618,6 +620,22 @@ export function newSite(s: GameState): Result {
   resetSite(s, capital);
   startAct(s, SANDBOX_ACT);
   return ok(0, `${gain}`);
+}
+
+/** Relever un défi : un nouveau site presque vide, une contrainte, un objectif. */
+export function startChallenge(s: GameState, id: ChallengeId): Result {
+  if (s.act !== SANDBOX_ACT) return fail('acte');
+  if (s.challenge?.state === 'on') return fail('défi');
+  resetSite(s, CHALLENGE_CAPITAL);
+  startAct(s, SANDBOX_ACT);
+  s.challenge = { id, t0: s.t, p0: s.stats.produced, state: 'on' };
+  return ok(0);
+}
+
+export function abandonChallenge(s: GameState): Result {
+  if (s.challenge?.state !== 'on') return fail('défi');
+  s.challenge.state = 'lost';
+  return ok(0);
 }
 
 export function buyKnowHow(s: GameState, id: KnowHowId): Result {
