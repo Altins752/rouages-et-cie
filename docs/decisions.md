@@ -128,3 +128,11 @@ Format : date — décision — raison.
 ## Défis du bac à sable (2026-10-04)
 
 - 2026-10-04 — Trois défis à relever après la fin, chacun sur un site presque vide (1 000 €, recherches et savoir-faire gardés) : « Sans licencier » (500 000 écrous, licenciement refusé), « L'artisan » (1 M€ en caisse, machines mécaniques au plus, ingénieur méthodes compris), « Contre la montre » (3 500 écrous en 30 min de jeu). Réussir débloque un succès ; on peut abandonner ou retenter. Sauvegarde v6 (migration v5 → v6). — Le capital du bac à sable (60 M€ en simulation) rendait tout défi trivial ; les objectifs sont calés sur l'IA du simulateur (99, 137 et 28 min de jeu).
+
+## Refonte graphique (2026-10-05)
+
+- 2026-10-05 — Textures procédurales générées au chargement (bruit à graine, aucune image), à une échelle commune et avec des niveaux de détail selon le zoom. Une époque par acte : forge en briques (prologue, acte I), parpaings peints (région), bardage (pays), panneaux blancs (monde). — Cohérence et réalisme demandés ; le fichier unique reste autonome.
+- 2026-10-05 — Rendu en quatre couches : scène, émissif (halo), carte de lumière et signaux. Le post-traitement WebGL éclaire la scène (lampes, soleil, voyants, relief), fait trembler l'air chaud, applique un halo à deux échelles et un étalonnage par époque. Les signaux (voyants, textes, cadres) sont dessinés au-dessus et ne sont jamais étalonnés. — L'ambiance ne doit jamais manger l'information.
+- 2026-10-05 — Couleurs d'état fixes sur une colonne lumineuse par machine : vert = produit, ambre = attend, rouge = panne, bleu = entretien. Bacs entre postes qui débordent avec un voyant rouge. — Repérer le goulot sans données (invariant 10).
+- 2026-10-05 — Bouton Effets à trois niveaux (complets, sobres, coupés). En rendu logiciel, ou si l'image dépasse 28 ms pendant 4 s, on passe en sobres. — Fluidité d'abord sur les petites machines.
+- 2026-10-05 — Toutes les cadences s'affichent par minute (pièces/min, €/min), la simulation compte toujours en secondes. La cadence d'une chaîne affichée (scène et panneau) est le débit de son goulot. — Demande du joueur : des chiffres plus parlants (0,07 €/s devient 4,2 €/min) ; le panneau montrait parfois plus que le goulot.

@@ -5,7 +5,7 @@
 import { ACTS, MATERIALS } from '../data/balance';
 import { estimateFactory } from '../sim/analysis';
 import type { GameState, Machine, SimEvent } from '../sim/types';
-import { fmt } from '../ui/format';
+import { PER_MIN, fmt } from '../ui/format';
 import { MATERIAL_NAMES, STATION_NAMES } from '../ui/text';
 
 export interface Msg {
@@ -35,8 +35,8 @@ const GRID = 'Réseau électrique';
 const BOURSE = 'Bourse de Paris';
 
 const m = (from: string, text: string): Msg => ({ from, text });
-const market = (a: number) => fmt(ACTS[a].market);
-const half = (a: number) => fmt(ACTS[a].market / 2);
+const market = (a: number) => fmt(ACTS[a].market * PER_MIN);
+const half = (a: number) => fmt((ACTS[a].market / 2) * PER_MIN);
 /** Toutes les machines du site. */
 const allMachines = (s: GameState): Machine[] => s.factories.flatMap((f) => f.lines.flatMap((l) => l.slots.filter((x): x is Machine => !!x)));
 
@@ -90,7 +90,7 @@ export const BEATS: Beat[] = [
     when: (s) => s.act === 1,
     msgs: () => [
       m(BANK, 'Dette soldée. La forge vous appartient.\nAu passage : Ferrum Industries détient 100 % du marché de la ville. C’est elle qui a racheté l’usine de votre grand-père, il y a trente ans.'),
-      m(CCI, `Marché de la ville : ${market(1)} € de ventes par seconde, presque tout pour Ferrum.\nObjectif : en prendre la moitié (${half(1)} €/s) et la tenir 30 secondes.`),
+      m(CCI, `Marché de la ville : ${market(1)} € de ventes par minute, presque tout pour Ferrum.\nObjectif : en prendre la moitié (${half(1)} €/min) et la tenir 30 secondes.`),
       m(MARCEL, 'On a de quoi viser la ville, patron.\nLe bureau d’études ouvre (onglet R&D) : des machines, de nouveaux métaux. Et un contremaître nous dirait enfin où ça coince (onglet Équipe).'),
     ],
   },
@@ -132,7 +132,7 @@ export const BEATS: Beat[] = [
     id: 'act2',
     when: (s) => s.act === 2,
     msgs: (s) => [
-      m(CCI, `Bienvenue dans la région. Marché : ${market(2)} € par seconde.\nObjectif : la moitié, soit ${half(2)} €/s, tenue 30 secondes.`),
+      m(CCI, `Bienvenue dans la région. Marché : ${market(2)} € par minute.\nObjectif : la moitié, soit ${half(2)} €/min, tenue 30 secondes.`),
       m(MARCEL, `Nouvelle usine, tout est à refaire. Mais on sait faire, maintenant.\nVos recherches nous ont suivis, et ${s.knowHow.points > 0 ? 'notre savoir-faire aussi (onglet R&D).' : 'le métier aussi.'}\nIci, il faudra penser aux gens : le moral compte. Et les machines s’usent.`),
     ],
   },
@@ -176,7 +176,7 @@ export const BEATS: Beat[] = [
     id: 'act3',
     when: (s) => s.act === 3,
     msgs: () => [
-      m(CCI, `Le pays tout entier : ${market(3)} € par seconde.\nTenez la moitié du marché (${half(3)} €/s) 30 secondes et la Bourse vous ouvre ses portes.`),
+      m(CCI, `Le pays tout entier : ${market(3)} € par minute.\nTenez la moitié du marché (${half(3)} €/min) 30 secondes et la Bourse vous ouvre ses portes.`),
       m(MARCEL, 'Ça devient grand, patron. Trop grand pour tout voir d’ici.\nIl va nous falloir des bureaux : logistique, commerciaux, contrôleur de gestion. Ils verront ce qu’on ne voit plus.'),
     ],
   },
@@ -326,7 +326,7 @@ export function controllerReport(s: GameState): Msg {
   const f = s.flow;
   const costs = f.raw + f.salaries + Math.max(0, f.energy) + f.maintenance;
   const net = f.revenue + f.contracts - costs;
-  const lines = [`Recettes ${fmt(f.revenue + f.contracts)} €/s · charges ${fmt(costs)} €/s · bénéfice ${net >= 0 ? '' : '−'}${fmt(Math.abs(net))} €/s.`];
+  const lines = [`Recettes ${fmt((f.revenue + f.contracts) * PER_MIN)} €/min · charges ${fmt(costs * PER_MIN)} €/min · bénéfice ${net >= 0 ? '' : '−'}${fmt(Math.abs(net) * PER_MIN)} €/min.`];
   const alerts: string[] = [];
   const broken = allMachines(s).filter((x) => x.broken).length;
   if (broken) alerts.push(`${broken} machine${broken > 1 ? 's' : ''} en panne.`);

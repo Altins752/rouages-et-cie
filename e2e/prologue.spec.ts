@@ -59,7 +59,7 @@ test('rembourser la dette ouvre l’acte I et le bureau d’études', async ({ p
     r.G.s.money = 900;
   });
   await page.keyboard.press('4');
-  await page.getByRole('button', { name: /Rembourser/ }).click();
+  await page.locator('#list').getByRole('button', { name: /Rembourser/ }).click();
   expect(await page.evaluate(() => (window as any).__rouages.G.s.act)).toBe(1);
   await expect(page.locator('#telex')).toHaveClass(/show/);
   await expect(page.locator('#tTxt')).toContainText(/./);

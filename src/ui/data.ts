@@ -8,7 +8,7 @@ import { estimateFactory } from '../sim/analysis';
 import { HIST, salaryOf } from '../sim/engine';
 import { priceMult } from '../sim/formulas';
 import type { GameState } from '../sim/types';
-import { fmt, fmtP, mmss, pct } from './format';
+import { PER_MIN, fmt, fmtP, perMin, mmss, pct } from './format';
 import type { View } from './panel';
 import { LEVEL_PLURAL, MATERIAL_NAMES, ROLE_DATA, ROLE_NAMES, STATION_NAMES } from './text';
 
@@ -33,16 +33,16 @@ interface ChartCfg {
 }
 
 const CH: Record<string, ChartCfg> = {
-  prod: { title: 'Production', unit: 'pièces/s', smooth: 3, series: [{ k: HIST.prod, col: '#ffb02e', name: 'Production', area: true }] },
+  prod: { title: 'Production', unit: 'pièces/min', smooth: 3, series: [{ k: (p) => p[HIST.prod] * PER_MIN, col: '#ffb02e', name: 'Production', area: true }] },
   idle: { title: 'Gaspillage : machines en veille', unit: '%', series: [{ k: (p) => p[HIST.idle] * 100, col: '#ff6b5a', name: 'Veille', area: true }] },
   morale: { title: 'Moral moyen', unit: '%', series: [{ k: (p) => p[HIST.morale] * 100, col: '#7fc4ff', name: 'Moral', area: true }] },
   stock: { title: 'Stock', unit: 'pièces', series: [{ k: HIST.stock, col: '#ffb02e', name: 'Stock', area: true }] },
   share: { title: 'Part de marché', unit: '%', series: [{ k: (p) => p[HIST.share] * 100, col: '#ffd84a', name: 'Part', area: true }, { k: () => 50, col: '#ff6b5a', name: 'Objectif', dash: true }] },
   fin: {
-    title: 'Flux financiers', unit: '€/s', series: [
-      { k: HIST.rev, col: '#5dff8f', name: 'Ventes', area: true },
-      { k: (p) => p[HIST.raw] + p[HIST.sal] + p[HIST.energy] + p[HIST.maint], col: '#ff6b5a', name: 'Charges' },
-      { k: (p) => p[HIST.rev] - p[HIST.raw] - p[HIST.sal] - p[HIST.energy] - p[HIST.maint], col: '#ffb02e', name: 'Bénéfice' },
+    title: 'Flux financiers', unit: '€/min', series: [
+      { k: (p) => p[HIST.rev] * PER_MIN, col: '#5dff8f', name: 'Ventes', area: true },
+      { k: (p) => (p[HIST.raw] + p[HIST.sal] + p[HIST.energy] + p[HIST.maint]) * PER_MIN, col: '#ff6b5a', name: 'Charges' },
+      { k: (p) => (p[HIST.rev] - p[HIST.raw] - p[HIST.sal] - p[HIST.energy] - p[HIST.maint]) * PER_MIN, col: '#ffb02e', name: 'Bénéfice' },
     ],
   },
   cash: { title: 'Trésorerie', unit: '€', series: [{ k: HIST.money, col: '#5dff8f', name: 'Caisse', area: true }] },
@@ -262,7 +262,7 @@ export function dataView(s: GameState): View {
     s.factories.forEach((f, fi) => {
       const e = estimateFactory(s, fi);
       h += kv(`Usine ${fi + 1} · goulot : ${STATION_NAMES[e.bottleneck].toLowerCase()}`, `fc${fi}`);
-      k[`fc${fi}`] = `${fmtP(e.x)} pièce/s · postes ${e.cap.map((x) => fmtP(x)).join(' / ')}`;
+      k[`fc${fi}`] = `${perMin(e.x)} pièces/min · postes ${e.cap.map((x) => perMin(x)).join(' / ')}`;
       void f;
     });
     h += '</div>' + chart('prod');
@@ -304,7 +304,7 @@ export function dataView(s: GameState): View {
     h += kv('Effectif', 'hr1') + kv('Moral moyen', 'hr2') + kv('Masse salariale', 'hr3');
     k.hr1 = [1, 2, 3, 4].filter((l) => lv[l]).map((l) => `${lv[l]} ${LEVEL_PLURAL[l]}`).join(' · ') + (train ? ` · ${train} en formation` : '');
     k.hr2 = pct(s.workers.length ? mor / s.workers.length : 0);
-    k.hr3 = `${fmtP(s.workers.reduce((a, w) => a + salaryOf(w), 0))} €/s`;
+    k.hr3 = `${perMin(s.workers.reduce((a, w) => a + salaryOf(w), 0))} €/min`;
     h += '</div>' + chart('morale');
   }
   // Logistique
@@ -314,7 +314,7 @@ export function dataView(s: GameState): View {
       if (!s.stock[m] && !s.market.prodRate[m]) return;
       h += kv(MATERIAL_NAMES[m], `lg${m}`);
       const out = s.long.filter((c) => c.accepted && c.material === m).reduce((a, c) => a + c.rate, 0);
-      k[`lg${m}`] = `${fmt(s.stock[m])} en stock · ${fmtP(s.market.prodRate[m])}/s produits${out > 0 ? ` · ${fmtP(out)}/s sous contrat` : ''}`;
+      k[`lg${m}`] = `${fmt(s.stock[m])} en stock · ${perMin(s.market.prodRate[m])}/min produits${out > 0 ? ` · ${perMin(out)}/min sous contrat` : ''}`;
     });
     const next = s.spot.filter((c) => c.accepted).sort((a, b) => a.deadline - b.deadline)[0];
     h += kv('Prochaine échéance', 'lgd');
@@ -340,12 +340,12 @@ export function dataView(s: GameState): View {
     const costs = f.raw + f.salaries + Math.max(0, f.energy) + f.maintenance;
     h += `<div class="sec">${ROLE_NAMES.controller}<span>compte de résultat</span></div><div class="card col">`;
     h += kv('Recettes', 'cg1') + kv('Matière', 'cg2') + kv('Salaires', 'cg3') + kv('Énergie', 'cg4') + kv('Maintenance', 'cg5') + kv('Bénéfice', 'cg6') + kv('Coût de revient', 'cg7');
-    k.cg1 = `${fmtP(f.revenue + f.contracts)} €/s`;
-    k.cg2 = `${fmtP(f.raw)} €/s`;
-    k.cg3 = `${fmtP(f.salaries)} €/s`;
-    k.cg4 = `${fmtP(f.energy)} €/s`;
-    k.cg5 = `${fmtP(f.maintenance)} €/s`;
-    k.cg6 = `${fmtP(f.revenue + f.contracts - costs)} €/s`;
+    k.cg1 = `${perMin(f.revenue + f.contracts)} €/min`;
+    k.cg2 = `${perMin(f.raw)} €/min`;
+    k.cg3 = `${perMin(f.salaries)} €/min`;
+    k.cg4 = `${perMin(f.energy)} €/min`;
+    k.cg5 = `${perMin(f.maintenance)} €/min`;
+    k.cg6 = `${perMin(f.revenue + f.contracts - costs)} €/min`;
     k.cg7 = `${fmtP(costs / pieces)} € la pièce`;
     h += '</div>' + chart('fin') + chart('cash');
   }

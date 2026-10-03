@@ -21,7 +21,7 @@ test.describe('actes joués par l’IA du simulateur', () => {
     expect(r.act).toBe(1);
     expect(r.factories).toBe(2);
     await expect(page.locator('#objL')).toContainText('50');
-    await expect(page.locator('#rate')).toContainText('€/s');
+    await expect(page.locator('#rate')).toContainText('€/min');
     await shot(page, 'acte1');
     await page.locator('#tabs button[data-t="atelier"]').click();
     await expect(page.getByText(/goulot :/).first()).toBeVisible();

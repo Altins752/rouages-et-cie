@@ -3,7 +3,7 @@ import { ACTS, CHALLENGES, TACHO } from '../data/balance';
 import { G, inRed, vmax } from '../game';
 import { estimateSite } from '../sim/analysis';
 import { $, setText } from './dom';
-import { fmt, fmtMoney, fmtP, mmss, pct } from './format';
+import { fmt, fmtMoney, mmss, pct, perMin } from './format';
 import { netRate, revenueRate, trackRates } from './rates';
 import { CHALLENGE_NAMES, SITE_NAMES } from './text';
 
@@ -17,7 +17,7 @@ export function updateConsole(): void {
   setText($('siteName'), s.ended && s.act === 5 ? 'Groupe Rouages & Cie' : SITE_NAMES[s.act]);
   // Recettes toujours affichées ; le bénéfice net avec le contrôleur de gestion
   trackRates(s);
-  setText($('rate'), `+${fmtP(revenueRate())} €/s`);
+  setText($('rate'), `+${perMin(revenueRate())} €/min`);
   const obj = $('obj');
   const g = ACTS[s.act].goal;
   obj.classList.remove('warn', 'good');
@@ -51,8 +51,8 @@ export function updateConsole(): void {
   if (now - rateCache.t > 1000) {
     rateCache.t = now;
     const n = netRate();
-    if (s.roles.controller) rateCache.info = `Net ${n >= 0 ? '+' : '−'}${fmtP(Math.abs(n))} €/s`;
-    else if (s.roles.foreman) rateCache.info = `Cadence ${fmtP(estimateSite(s).factories.reduce((a, e) => a + e.x, 0))}/s`;
+    if (s.roles.controller) rateCache.info = `Net ${n >= 0 ? '+' : '−'}${perMin(Math.abs(n))} €/min`;
+    else if (s.roles.foreman) rateCache.info = `Cadence ${perMin(estimateSite(s).factories.reduce((a, e) => a + e.x, 0))}/min`;
     else rateCache.info = `Vendus ${fmt(s.stats.sold)}`;
   }
   setText($('infoR'), rateCache.info);

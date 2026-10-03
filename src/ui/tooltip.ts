@@ -6,7 +6,7 @@ import { estimateFactory } from '../sim/analysis';
 import { conveyorActive, salaryOf } from '../sim/engine';
 import { skill } from '../sim/formulas';
 import { $, esc } from './dom';
-import { fmtP, pct } from './format';
+import { fmtP, perMin, pct } from './format';
 import { KIND_NAMES, TRAIT_DESC, TRAIT_NAMES, LEVEL_NAMES, MACHINE_NAMES, MATERIAL_NAMES, STATION_NAMES, TIER_NAMES, TIER_SHORT } from './text';
 
 const row = (a: string, b: string) => `<div class="row"><span>${a}</span><span>${b}</span></div>`;
@@ -27,7 +27,7 @@ export function tooltipHtml(h: Hover): string {
     html += row(KIND_NAMES[w.kind], w.kind === 'crank' ? `chaîne ${w.line + 1}` : w.kind === 'post' ? `${STATION_NAMES[w.station].toLowerCase()}, chaîne ${w.line + 1}` : 'tous postes');
     if (w.kind !== 'crank') html += row('Formations', `${w.trainings}/${TRAINING.perLevel} · cadence ×${fmtP(skill(w))}`);
     if (w.trait) html += row('Caractère', `${TRAIT_NAMES[w.trait]} : ${TRAIT_DESC[w.trait]}`);
-    html += row('Salaire', `${fmtP(salaryOf(w))} €/s`);
+    html += row('Salaire', `${perMin(salaryOf(w))} €/min`);
     if (s.roles.hr) html += row('Moral', pct(w.morale)) + row('Occupation', pct(w.load));
     return html;
   }
@@ -54,7 +54,7 @@ export function tooltipHtml(h: Hover): string {
   }
   if (s.roles.foreman) {
     const e = estimateFactory(s, h.hall);
-    html += row('Cadence du poste', `${fmtP(e.rate[h.line][h.station])}/s${e.lineBottleneck[h.line] === h.station ? ' · goulot' : ''}`);
+    html += row('Cadence du poste', `${perMin(e.rate[h.line][h.station])}/min${e.lineBottleneck[h.line] === h.station ? ' · goulot' : ''}`);
   }
   const state = m.broken ? (m.service > 0 ? `réparation ${Math.ceil(m.service)} s` : 'en panne') : m.service > 0 ? `révision ${Math.ceil(m.service)} s` : m.busy ? 'en marche' : 'en veille';
   html += row('État', state);

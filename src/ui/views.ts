@@ -18,7 +18,7 @@ import {
 import type { GameState, Worker } from '../sim/types';
 import * as U from './actions';
 import { esc } from './dom';
-import { dur, fmt, fmtP, mmss, pct } from './format';
+import { PER_MIN, dur, fmt, fmtP, mmss, pct, perMin } from './format';
 import type { View } from './panel';
 import { dataView } from './data';
 import { revenueRate } from './rates';
@@ -125,7 +125,7 @@ function vAtelier(s: GameState): View {
       if (m.tier > 0) h += `<div class="w"><i data-w="w${l}${st}" style="background:${m.wear > 0.7 ? '#ff5a4a' : m.wear > 0.5 ? '#ffb02e' : '#57d987'}"></i></div>`;
       h += '</div>';
       const rate = est ? est.rate[l][st] : -1;
-      const state = m.broken ? (m.service > 0 ? `répar. ${Math.ceil(m.service)} s` : 'en panne') : m.service > 0 ? `révision ${Math.ceil(m.service)} s` : m.tier < ROBOT_TIER && m.post < 0 ? 'vacant' : est ? (rate > 0 ? `${fmtP(rate)}/s` : 'arrêt') : TIER_SHORT[m.tier];
+      const state = m.broken ? (m.service > 0 ? `répar. ${Math.ceil(m.service)} s` : 'en panne') : m.service > 0 ? `révision ${Math.ceil(m.service)} s` : m.tier < ROBOT_TIER && m.post < 0 ? 'vacant' : est ? (rate > 0 ? `${perMin(rate)}/min` : 'arrêt') : TIER_SHORT[m.tier];
       k[`ul${l}${st}`] = `${STATION_NAMES[st].slice(0, 4)}. ${state}`;
       w[`w${l}${st}`] = s.roles.supervisor ? m.wear : 0;
     });
@@ -149,7 +149,7 @@ function vAtelier(s: GameState): View {
     const robotsOnly = n > 0 && line.slots.every((m) => !m || m.tier >= ROBOT_TIER);
     const conv = robotsOnly ? 'robots : transfert automatique' : line.conveyor ? (active ? 'convoyeur en marche' : line.crank < 0 ? 'convoyeur sans ouvrier à la manivelle' : 'convoyeur à l’arrêt') : 'pièces portées à la main';
     k[`lt${l}`] = `${n}/4 postes`;
-    k[`lc${l}`] = `${est && b >= 0 ? `${fmtP(est.flow[l][3] || est.rate[l][b])} pièce/s · goulot : ${STATION_NAMES[b].toLowerCase()} · ` : ''}${line.produced ? `${fmt(line.produced)} écrous · ` : ''}${conv}`;
+    k[`lc${l}`] = `${est && b >= 0 ? `${perMin(est.rate[l][b])} pièces/min · goulot : ${STATION_NAMES[b].toLowerCase()} · ` : ''}${line.produced ? `${fmt(line.produced)} écrous · ` : ''}${conv}`;
   });
   if (!s.roles.foreman && s.act >= 1) h += '<div class="note">Le contremaître (onglet Équipe) affiche la cadence de chaque poste et le goulot de chaque chaîne.</div>';
   // Postes : acheter, moderniser
@@ -231,7 +231,7 @@ function vAtelier(s: GameState): View {
       eta[`e${kind}`] = cost;
     }
     const ren = e.solarKw + e.windKw;
-    k.en = `${fmt(e.demand)} kW · ${pct(e.demand > 0 ? Math.min(1, ren / e.demand) : 0)} renouvelable · ${fmtP(Math.max(0, e.cost))} €/s${e.cut ? ' · COUPURE' : ''}`;
+    k.en = `${fmt(e.demand)} kW · ${pct(e.demand > 0 ? Math.min(1, ren / e.demand) : 0)} renouvelable · ${perMin(Math.max(0, e.cost))} €/min${e.cut ? ' · COUPURE' : ''}`;
   }
   return { sig, html: h, k, d, w, eta };
 }
@@ -259,10 +259,10 @@ function foremanReport(s: GameState, fi: number, est: FactoryEstimate): string[]
       if (!w) out.push(`${where} : poste vacant, tenu au mieux par les polyvalents.`);
       else if (w.level < TIER_OPERATOR_LEVEL[m.tier]) out.push(`${where} : ${esc(w.name)} n’a pas le niveau, la machine attend sa promotion.`);
       else if (w.state === 'train') out.push(`${where} : ${esc(w.name)} est en stage.`);
-      else if (canPromote(w)) out.push(`${where} : goulot à ${fmtP(est.rate[l][b])}/s — ${esc(w.name)} peut être promu·e ; sinon outiller ou moderniser.`);
-      else if (canTrain(w)) out.push(`${where} : goulot à ${fmtP(est.rate[l][b])}/s — former ${esc(w.name)} (${w.trainings}/${TRAINING.perLevel}), outiller ou moderniser.`);
-      else out.push(`${where} : goulot à ${fmtP(est.rate[l][b])}/s — outiller ou moderniser.`);
-    } else out.push(`${where} : goulot robotisé à ${fmtP(est.rate[l][b])}/s.`);
+      else if (canPromote(w)) out.push(`${where} : goulot à ${perMin(est.rate[l][b])}/min — ${esc(w.name)} peut être promu·e ; sinon outiller ou moderniser.`);
+      else if (canTrain(w)) out.push(`${where} : goulot à ${perMin(est.rate[l][b])}/min — former ${esc(w.name)} (${w.trainings}/${TRAINING.perLevel}), outiller ou moderniser.`);
+      else out.push(`${where} : goulot à ${perMin(est.rate[l][b])}/min — outiller ou moderniser.`);
+    } else out.push(`${where} : goulot robotisé à ${perMin(est.rate[l][b])}/min.`);
     const human = line.slots.some((x) => x && x.tier < ROBOT_TIER);
     if (human && !line.conveyor && line.slots.filter(Boolean).length >= 3) out.push(`chaîne ${l + 1} : sans convoyeur, chaque pièce est portée à la main.`);
     else if (human && line.conveyor && line.crank < 0) out.push(`chaîne ${l + 1} : le convoyeur attend un ouvrier à la manivelle.`);
@@ -348,13 +348,13 @@ function vEquipe(s: GameState): View {
   h += `<button class="buy plain${recOn('poly') ? ' rec' : ''}" type="button" data-act="hire-poly" data-b="poly" data-fk="poly"><span class="c">Polyvalent</span><small>${polys}/${POLY.maxPerFactory} · ${pct(POLY.productivity)} de cadence</small></button></div></div>`;
   d.poly = polys >= POLY.maxPerFactory;
   k.n = `×${ws.length}`;
-  k.sal = `salaires ${fmtP(sal)} €/s${roleSal ? ` · encadrement ${fmtP(roleSal)} €/s` : ''} · recettes ${fmtP(rev)} €/s`;
+  k.sal = `salaires ${perMin(sal)} €/min${roleSal ? ` · encadrement ${perMin(roleSal)} €/min` : ''} · recettes ${perMin(rev)} €/min`;
   // Alerte salaires / recettes
   const totalSal = s.workers.reduce((a, x) => a + salaryOf(x), 0) + roleSal;
   if (s.act >= 1 && rev > 0 && roleSal > rev * ROLE_WARN_SHARE) {
-    h += `<div class="note">⚠ L’encadrement coûte ${fmtP(roleSal)} €/s, soit ${pct(roleSal / rev)} de vos recettes. Congédiez un rôle si la caisse fond (plus bas).</div>`;
+    h += `<div class="note">⚠ L’encadrement coûte ${perMin(roleSal)} €/min, soit ${pct(roleSal / rev)} de vos recettes. Congédiez un rôle si la caisse fond (plus bas).</div>`;
   } else if (s.act >= 1 && totalSal > rev && s.money < 0) {
-    h += `<div class="note">⚠ Les salaires (${fmtP(totalSal)} €/s) dépassent les recettes (${fmtP(rev)} €/s) : la caisse se vide.</div>`;
+    h += `<div class="note">⚠ Les salaires (${perMin(totalSal)} €/min) dépassent les recettes (${perMin(rev)} €/min) : la caisse se vide.</div>`;
   }
   sig += rev > 0 && roleSal > rev * ROLE_WARN_SHARE ? 'W' : totalSal > rev && s.money < 0 ? 'w' : '';
   // Machines qui attendent une promotion
@@ -370,7 +370,7 @@ function vEquipe(s: GameState): View {
     rep.forEach((_, i) => (h += `<div class="kv"><span data-k="fr${i}"></span></div>`));
     h += '</div>';
     rep.forEach((x, i) => (k[`fr${i}`] = x));
-    k.fx = `${fmtP(est.x)} pièce/s`;
+    k.fx = `${perMin(est.x)} pièces/min`;
   }
   // Ouvriers
   h += `<div class="sec">Ouvriers<span>former ×${TRAINING.perLevel}, puis promouvoir</span></div>`;
@@ -411,7 +411,7 @@ function vEquipe(s: GameState): View {
     h += '</div></div></div>';
     const status = x.state === 'train' ? `${x.course === 'promote' ? 'promotion' : 'formation'} ${Math.ceil(x.timer)} s` : x.rest > 0 ? 'en pause' : x.state === 'work' ? 'au travail' : x.state === 'carry' ? 'porte une pièce' : x.state === 'walk' ? 'en chemin' : 'attend';
     const prod = `cadence ×${fmtP(skill(x))}`;
-    k[`wk${id}`] = `${x.kind === 'post' ? '' : `${KIND_NAMES[x.kind]} · `}${postLabel(x)} · ${status} · ${prod} · ${fmtP(salaryOf(x))} €/s${s.roles.hr ? ` · moral ${pct(x.morale)}` : ''}`;
+    k[`wk${id}`] = `${x.kind === 'post' ? '' : `${KIND_NAMES[x.kind]} · `}${postLabel(x)} · ${status} · ${prod} · ${perMin(salaryOf(x))} €/min${s.roles.hr ? ` · moral ${pct(x.morale)}` : ''}`;
     w[`wm${id}`] = x.morale;
   }
   // Ingénieur méthodes : consigne
@@ -451,11 +451,11 @@ function vEquipe(s: GameState): View {
     const id = r.id as RoleId;
     const av = A.roleAvailable(s, id);
     if (s.roles[id]) {
-      h += `<div class="card"><div class="ic" aria-hidden="true">📋</div><div class="info"><div class="nm">${ROLE_NAMES[id]} <span class="tag green">en poste</span></div><div class="vis">${ROLE_DECISION[id]} ${fmtP(r.salary)} €/s.</div></div><button class="buy plain" type="button" data-act="dismiss" data-i="${id}" data-fk="dm${id}"><span class="c">Congédier</span><small>−${fmtP(r.salary)} €/s</small></button></div>`;
+      h += `<div class="card"><div class="ic" aria-hidden="true">📋</div><div class="info"><div class="nm">${ROLE_NAMES[id]} <span class="tag green">en poste</span></div><div class="vis">${ROLE_DECISION[id]} ${perMin(r.salary)} €/min.</div></div><button class="buy plain" type="button" data-act="dismiss" data-i="${id}" data-fk="dm${id}"><span class="c">Congédier</span><small>−${perMin(r.salary)} €/min</small></button></div>`;
     } else if (!av) {
       h += `<div class="card dim"><div class="ic" aria-hidden="true">${lock}</div><div class="info"><div class="nm">${ROLE_NAMES[id]}</div><div class="vis">${['', 'Acte I', 'Acte II', 'Acte III'][r.act]} · ${ROLE_DATA[id]}</div></div></div>`;
     } else {
-      h += `<div class="card"><div class="ic" aria-hidden="true">📋</div><div class="info"><div class="nm">${ROLE_NAMES[id]}</div><div class="vis">${ROLE_DATA[id]} ${ROLE_DECISION[id]}</div></div><button class="buy" type="button" data-act="role" data-i="${id}" data-fk="role${id}"><span class="c">Recruter</span><small>${fmtP(r.salary)} €/s</small></button></div>`;
+      h += `<div class="card"><div class="ic" aria-hidden="true">📋</div><div class="info"><div class="nm">${ROLE_NAMES[id]}</div><div class="vis">${ROLE_DATA[id]} ${ROLE_DECISION[id]}</div></div><button class="buy" type="button" data-act="role" data-i="${id}" data-fk="role${id}"><span class="c">Recruter</span><small>${perMin(r.salary)} €/min</small></button></div>`;
     }
   }
   return { sig, html: h, k, d, w, eta };
@@ -535,7 +535,7 @@ function vMarche(s: GameState): View {
   const a = ACTS[s.act];
   const goal = a.goal;
   let sig = `M${s.act}|${s.market.goalReached}|${s.ended}|${s.spot.map((x) => x.id + (x.accepted ? 'a' : 'o')).join(',')}|${s.long.map((x) => x.id + (x.accepted ? 'a' : 'o')).join(',')}|${s.roles.logistics}${s.roles.sales}`;
-  let h = `<div class="card col"><div class="row"><div class="ic" aria-hidden="true">🏙️</div><div class="info"><div class="nm">${ACT_NAMES[s.act]}</div><div class="ef">Marché de ${MARKET_NAMES[s.act]} : ${s.act === 5 ? 'sans plafond' : `${fmt(a.market)} € de ventes par seconde`}</div></div></div>`;
+  let h = `<div class="card col"><div class="row"><div class="ic" aria-hidden="true">🏙️</div><div class="info"><div class="nm">${ACT_NAMES[s.act]}</div><div class="ef">Marché de ${MARKET_NAMES[s.act]} : ${s.act === 5 ? 'sans plafond' : `${fmt(a.market * PER_MIN)} € de ventes par minute`}</div></div></div>`;
   if (s.act >= 1 && s.act <= 4) {
     h += '<div class="bar" aria-hidden="true"><i data-w="sh" style="background:linear-gradient(#ffd84a,#f2b705)"></i><i data-w="fe" style="background:#6d737b"></i></div>';
     h += '<div class="kv"><span>Votre part</span><b data-k="sh"></b></div><div class="kv"><span>Ferrum Industries</span><b data-k="fe"></b></div>';
@@ -610,12 +610,12 @@ function vMarche(s: GameState): View {
       h += '</div>';
     });
     s.long.forEach((c) => {
-      h += `<div class="card col"><div class="row"><div class="ic" aria-hidden="true">📑</div><div class="info"><div class="nm">Long terme : ${fmtP(c.rate)} écrou/s en ${MATERIAL_NAMES[c.material].toLowerCase()} <span class="tag">${fmtP(c.price)} €</span></div><div class="ef" data-k="lt${c.id}"></div></div></div>`;
+      h += `<div class="card col"><div class="row"><div class="ic" aria-hidden="true">📑</div><div class="info"><div class="nm">Long terme : ${perMin(c.rate)} écrous/min en ${MATERIAL_NAMES[c.material].toLowerCase()} <span class="tag">${fmtP(c.price)} €</span></div><div class="ef" data-k="lt${c.id}"></div></div></div>`;
       if (c.accepted) {
-        k[`lt${c.id}`] = `${euros(c.rate * c.price)}/s · ${c.short > 0 ? `stock insuffisant : rupture dans ${Math.ceil(CONTRACTS.longGrace - c.short)} s` : 'approvisionné'}`;
+        k[`lt${c.id}`] = `${euros(c.rate * c.price * PER_MIN)}/min · ${c.short > 0 ? `stock insuffisant : rupture dans ${Math.ceil(CONTRACTS.longGrace - c.short)} s` : 'approvisionné'}`;
         h += `<div class="btns"><button class="buy plain" type="button" data-act="end-long" data-i="${c.id}" data-fk="el${c.id}"><span class="c">Résilier</span><small>sans pénalité</small></button></div>`;
       } else {
-        k[`lt${c.id}`] = `rapporterait ${euros(c.rate * c.price)}/s · production actuelle ${fmtP(s.market.prodRate[c.material])}/s`;
+        k[`lt${c.id}`] = `rapporterait ${euros(c.rate * c.price * PER_MIN)}/min · production actuelle ${perMin(s.market.prodRate[c.material])}/min`;
         h += `<div class="btns"><button class="buy" type="button" data-act="sign" data-i="${c.id}" data-b="sg${c.id}" data-fk="sg${c.id}"><span class="c">Signer</span><small>prélèvement continu</small></button></div>`;
         d[`sg${c.id}`] = s.long.filter((x) => x.accepted).length >= CONTRACTS.maxLong;
       }
@@ -627,9 +627,9 @@ function vMarche(s: GameState): View {
   sig += mats.join('');
   h += '<div class="sec">Ventes</div><div class="card col">';
   for (const m of mats) h += `<div class="kv"><span>${MATERIAL_NAMES[m]}</span><b>${fmtP(MATERIALS[m].price * priceMult(s))} € · matière ${fmtP(MATERIALS[m].raw)} €</b></div>`;
-  h += `<div class="kv"><span>Recettes</span><b data-k="rv"></b></div><div class="kv"><span>Stock</span><b data-k="st"></b></div><div class="kv"><span>Demande maximale</span><b>${s.act === 5 ? 'illimitée' : `${fmt(a.market)} €/s`}</b></div></div>`;
+  h += `<div class="kv"><span>Recettes</span><b data-k="rv"></b></div><div class="kv"><span>Stock</span><b data-k="st"></b></div><div class="kv"><span>Demande maximale</span><b>${s.act === 5 ? 'illimitée' : `${fmt(a.market * PER_MIN)} €/min`}</b></div></div>`;
   k.st = `${fmt(s.stock.reduce((x, y) => x + y, 0))} écrous`;
-  k.rv = `${fmtP(revenueRate())} €/s`;
+  k.rv = `${perMin(revenueRate())} €/min`;
   return { sig, html: h, k, d, w, eta };
 }
 

@@ -9,6 +9,7 @@ import { conveyorActive } from '../sim/engine';
 import { ambient, dayPhase, daylight } from '../sim/env';
 import { crankUseful, machineCycle } from '../sim/formulas';
 import type { Factory, Line } from '../sim/types';
+import { perMin } from '../ui/format';
 import { STATION_NAMES } from '../ui/text';
 import { BLACK_AMBIENT, ERAS, eraOf } from './era';
 import type { Era } from './era';
@@ -1230,14 +1231,14 @@ function drawOverlay(f: Factory, fi: number): void {
     // cadence de la chaîne : celle de son poste le plus lent
     if (line.slots.some(Boolean)) {
       const out = b >= 0 ? est.rate[l][b] : 0;
-      tag(out > 0 ? `→ ${out.toFixed(2).replace('.', ',')}/s` : '→ arrêt', 34, LY[l] - 22, size, out > 0 ? '#9fe8b4' : '#9aa1aa', 'rgba(14,30,20,.88)');
+      tag(out > 0 ? `→ ${perMin(out, 1)}/min` : '→ arrêt', 34, LY[l] - 22, size, out > 0 ? '#9fe8b4' : '#9aa1aa', 'rgba(14,30,20,.88)');
     }
     line.slots.forEach((m, s) => {
       if (!m) return;
       const r = est.rate[l][s];
       const slow = s === b;
       if (sparse && !slow && r > 0) return;
-      tag(r <= 0 ? 'arrêt' : `${r.toFixed(2).replace('.', ',')}/s`, SX[s], LY[l] - 22, size, r <= 0 ? '#9aa1aa' : slow ? '#ff7a6a' : '#ffc061');
+      tag(r <= 0 ? 'arrêt' : `${perMin(r, 1)}/min`, SX[s], LY[l] - 22, size, r <= 0 ? '#9aa1aa' : slow ? '#ff7a6a' : '#ffc061');
     });
   });
 }

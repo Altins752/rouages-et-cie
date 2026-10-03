@@ -42,6 +42,14 @@ export function fmtP(x: number, digits = 2): string {
   return x.toFixed(d).replace('.', ',');
 }
 
+/** Les cadences s'affichent par minute ; la simulation, elle, compte en secondes. */
+export const PER_MIN = 60;
+
+/** Une cadence (par seconde de jeu) affichée par minute. */
+export function perMin(x: number, digits = 2): string {
+  return fmtP(x * PER_MIN, digits);
+}
+
 export function pct(x: number): string {
   return isFinite(x) ? `${Math.round(x * 100)}${NBSP}%` : '—';
 }
