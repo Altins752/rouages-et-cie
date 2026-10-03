@@ -350,7 +350,16 @@ export const KNOW_HOW: readonly KnowHowDef[] = [
 
 // ---------------------------------------------------------------- Divers
 
-/** Progression hors ligne plafonnée (s réelles). */
-export const OFFLINE_CAP = 8 * 3600;
+/**
+ * Équipe de nuit : ce que l'usine produit pendant l'absence du joueur.
+ * Rendement = part de la cadence normale ; durée = temps de travail maximal par absence.
+ */
+export const NIGHT = {
+  act: 2,
+  /** Absence courte (onglet en arrière-plan) rattrapée à plein régime, sans équipe de nuit. */
+  grace: 300,
+  rate: { per: 0.005, max: 50, cost: 1500, growth: 1.25 },
+  duration: { base: 1800, per: 900, max: 10, cost: 6000, growth: 2.2 },
+};
 /** Durée minimale d'une crise avant la suivante (directeur d'incidents). */
 export const CRISIS_GAP = 120;

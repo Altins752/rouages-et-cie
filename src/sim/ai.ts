@@ -3,14 +3,14 @@
  * rentabilisée (comme le simulateur Python d'origine), en jouant sur le vrai moteur.
  */
 import {
-  ACTS, CONTRACTS, ENERGY, KNOW_HOW, MATERIALS, METHODS, RESEARCH_EXTRA, ROBOT_TIER, ROLES, TIER_OPERATOR_LEVEL,
+  ACTS, CONTRACTS, ENERGY, KNOW_HOW, MATERIALS, METHODS, NIGHT, RESEARCH_EXTRA, ROBOT_TIER, ROLES, TIER_OPERATOR_LEVEL,
   TIER_RESEARCH,
 } from '../data/balance';
 import * as A from './actions';
 import { bestCandidate, firstStepCost } from './advisor';
 import type { Candidate } from './advisor';
 import { estimateSite } from './analysis';
-import { canPromote, canTrain, knowHowCost, promotionCost, trainingCost } from './formulas';
+import { canPromote, canTrain, knowHowCost, nightCost, promotionCost, trainingCost } from './formulas';
 import type { GameState } from './types';
 
 export interface AiLog {
@@ -225,6 +225,11 @@ export function aiStep(ai: AiState, s: GameState): void {
   }
   if (s.roles.methods) for (let st = 0; st < 4; st++) A.setMethodsTarget(s, st, s.research.tier);
   if (s.act >= 2 && s.canteen === 0 && s.money > A.canteenCost(s) * 2) run(ai, s, 'canteen', A.buyCanteen(s));
+  // Équipe de nuit : petit budget, un niveau quand il pèse peu dans la caisse.
+  if (A.nightAvailable(s)) {
+    const kind: A.NightKind = s.night.rate > 0 && nightCost('duration', s.night.duration) < nightCost('rate', s.night.rate) ? 'duration' : 'rate';
+    if (s.night[kind] < NIGHT[kind].max && nightCost(kind, s.night[kind]) < s.money * 0.02) run(ai, s, `night ${kind}`, A.upgradeNight(s, kind));
+  }
   // Énergie : éolien si la facture pèse.
   if (s.act >= ENERGY.act && s.energy.cost > 5) {
     const c = A.energyCost(s, 'wind');

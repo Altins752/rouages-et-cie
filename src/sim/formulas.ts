@@ -1,6 +1,6 @@
 import {
   ACTS, CONVEYOR, CYCLE, FACTORY_COPY_FACTOR, FERRUM, HALL_GROWTH, KNOW_HOW, MARCEL_PRODUCTIVITY, MATERIALS,
-  MATERIAL_STATION_SHARE, MORALE, POLY, PRESTIGE, PROMOTION, REPUTATION, RESALE, ROBOT_TIER, SCRAP, TOOL_COST_FACTOR,
+  MATERIAL_STATION_SHARE, MORALE, NIGHT, POLY, PRESTIGE, PROMOTION, REPUTATION, RESALE, ROBOT_TIER, SCRAP, TOOL_COST_FACTOR,
   TOOL_COST_GROWTH, TOOL_GAIN, TOOL_TAU, TRAINING, UNIT_GROWTH, UNIT_PRICE,
 } from '../data/balance';
 import type { KnowHowId } from '../data/balance';
@@ -101,6 +101,23 @@ export function hallCost(s: GameState, factoriesAfter: number): number {
 
 export function newFactoryCost(s: GameState, model: Factory): number {
   return Math.round(factoryValue(model) * FACTORY_COPY_FACTOR + hallCost(s, s.factories.length + 1));
+}
+
+// ------------------------------------------------------------------ Équipe de nuit
+
+/** Part de la cadence normale tenue par l'équipe de nuit (0 avant l'acte II ou sans niveau). */
+export function nightRate(s: GameState): number {
+  return s.act >= NIGHT.act ? s.night.rate * NIGHT.rate.per : 0;
+}
+
+/** Temps de travail maximal de l'équipe de nuit pendant une absence (s). */
+export function nightDuration(s: GameState): number {
+  return s.act >= NIGHT.act && s.night.rate > 0 ? NIGHT.duration.base + s.night.duration * NIGHT.duration.per : 0;
+}
+
+export function nightCost(kind: 'rate' | 'duration', level: number): number {
+  const d = NIGHT[kind];
+  return Math.round(d.cost * Math.pow(d.growth, level));
 }
 
 export function trainingCost(s: GameState, w: Worker): number {

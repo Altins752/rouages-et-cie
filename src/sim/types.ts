@@ -212,6 +212,8 @@ export interface GameState {
   /** Outillage global : tooling[palier][poste], 0 à TOOL_MAX. Conservé aux déménagements. */
   tooling: number[][];
   methods: Methods;
+  /** Équipe de nuit : niveaux de rendement et de durée (gardés au déménagement). */
+  night: { rate: number; duration: number };
   nextId: number;
   nameIdx: number;
   stock: number[];

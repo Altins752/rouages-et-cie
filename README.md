@@ -51,6 +51,8 @@ Quatre leviers :
 
 Les recettes en €/s sont toujours affichées sur le pupitre, à côté de la caisse.
 
+En votre absence, l'usine ne tourne que si vous avez une **équipe de nuit** (à partir de l'acte II) : à son rendement, pendant sa durée de travail. Le rapport d'absence vous rappelle aussi, avec tact, ce que vous auriez pu gagner.
+
 Le clic ne produit rien : il **accélère le temps**. Clic maintenu (ou barre d'espace) : zone verte. Pour la zone rouge, il faut cliquer très vite ; les machines s'usent alors cinq fois plus.
 
 L'information se débloque avec l'encadrement : sans contremaître, vous ne voyez ni cadences ni goulot ; avec lui, un rapport signale les postes qui freinent leur chaîne. Superviseur, RH, ingénieur méthodes (modernise selon votre consigne), logistique, commercial et contrôleur de gestion remplissent peu à peu l'onglet Données et prennent des décisions à votre place. Un rôle trop cher se congédie à tout moment.

@@ -9,9 +9,9 @@ import { dust, sparks } from '../render/particles';
 import { worldOfStation } from '../render/scene';
 import * as A from '../sim/actions';
 import type { EnergyKind, ResearchId, Result } from '../sim/actions';
-import { fmt } from './format';
+import { dur, fmt, fmtP } from './format';
 import { TIER_OPERATOR_LEVEL } from '../data/balance';
-import { promotionTime, trainingTime } from '../sim/formulas';
+import { nightDuration, nightRate, promotionTime, trainingTime } from '../sim/formulas';
 import { KNOW_HOW_NAMES, LEVEL_NAMES, MACHINE_NAMES, MATERIAL_NAMES, ROLE_NAMES, STATION_NAMES, TIER_NAMES } from './text';
 import { toast } from './toast';
 
@@ -120,6 +120,13 @@ export function setMaterial(m: number, fi = G.factory): void {
 
 export function buyFactory(): void {
   if (done(A.buyFactory(G.s), `🏭 Nouvelle usine bâtie : usine ${G.s.factories.length}`, 'build')) G.factory = G.s.factories.length - 1;
+}
+
+export function upgradeNight(kind: A.NightKind): void {
+  const r = A.upgradeNight(G.s, kind);
+  done(r, () => (kind === 'rate'
+    ? `🌙 Équipe de nuit renforcée : rendement ${fmtP(nightRate(G.s) * 100, 1)} %`
+    : `🌙 Équipe de nuit renforcée : elle tient ${dur(nightDuration(G.s))}`), 'hire');
 }
 
 export function dismissRole(id: RoleId): void {

@@ -280,3 +280,14 @@ Demandée après les premières parties (acte III déficitaire, recettes invisib
 | Outillage | 3 niveaux, +25 % | 50 niveaux, global |
 
 Durées simulées (jeu actif, graine 11) : prologue 6,5 min, acte I 39, acte II 47, acte III 55, acte IV 169, total 5 h 16.
+
+## 20. Équipe de nuit (4 octobre 2026)
+
+Remplace la progression hors ligne de la version PC (8 h à pleine cadence). Disponible à l'acte II, gardée au déménagement.
+
+| Piste | Niveaux | Effet | Prix |
+| --- | --- | --- | --- |
+| Rendement | 50 | +0,5 % de la cadence par niveau (25 % au maximum) | 1 500 € × 1,25^niveau |
+| Durée | 10 | 30 min de base, +15 min par niveau (3 h au maximum) | 6 000 € × 2,2^niveau |
+
+Une absence de 5 min au plus est rattrapée à plein régime. Au-delà, l'usine tourne « rendement × durée » à plein régime, et la part de marché ne progresse pas. Le rapport d'absence affiche le manque à gagner. Au maximum, une nuit vaut 45 min de production à vitesse normale.

@@ -97,6 +97,20 @@ Nouvelle partie obligatoire (sauvegarde v3, les anciennes sont refusées). Vocab
 - [x] R5 — Cadrage (§ 19), CLAUDE.md (invariants 2 et 4), décisions, e2e (38), captures, README, fichier unique
 - [x] Confort d’affichage : délai avant achat, repérage dans la scène au survol, « +€ » au-dessus de la caisse, touches [ et ], filtre des ouvriers par chaîne (40 tests e2e)
 
+## Suite (plan validé le 2026-10-03)
+
+- [x] Équipe de nuit : rendement (50 niveaux) et durée (10 paliers), acte II, absence courte rattrapée, manque à gagner au rapport d'absence, gardiens dans la scène, sauvegarde v4 (migration v3 → v4) ; campagne actif 5 h 23
+- [ ] Quêtes : 2 à 3 actives, petites récompenses, « Aide Marcel », menant à l'objectif de l'acte sans le bloquer ; remplacent les jalons
+- [ ] Rail de Marcel : complet au prologue, court à chaque acte ; étapes toujours faisables, dette gelée, « Je connais, Marcel », option
+- [ ] Commandes spéciales dès l'acte I, calées sur la cadence mesurée (3 difficultés)
+- [ ] Traits des ouvriers
+- [ ] Télex narquois du patron de Ferrum
+- [ ] Mode carte postale (capture) et carte de fin de partie
+- [ ] Succès humoristiques
+- [ ] Carnet du grand-père en pages à collectionner
+- [ ] Radio de l'atelier
+- [ ] Défis de bac à sable
+
 ## Durées simulées
 
 Minutes réelles par étape. Critères : actif entre 5 et 6 h, prologue actif entre 5 et 10 min, premier achat < 60 s, jamais plus de 3 min sans achat possible, aucun acte bloqué.

@@ -1,6 +1,6 @@
 /** Contenu des onglets du panneau. Chaque vue renvoie du HTML stable et des valeurs à jour. */
 import {
-  ACTS, CONTRACTS, ENERGY, KNOW_HOW, LINES, MATERIALS, METHODS, POLY, RESEARCH_EXTRA, ROBOT_TIER, ROLES, ROLE_WARN_SHARE,
+  ACTS, CONTRACTS, ENERGY, KNOW_HOW, LINES, MATERIALS, METHODS, NIGHT, POLY, RESEARCH_EXTRA, ROBOT_TIER, ROLES, ROLE_WARN_SHARE,
   TIER_COUNT, TIER_MIN_ACT, TIER_OPERATOR_LEVEL, TIER_RESEARCH, TOOL_MAX, TRAINING, WEAR,
 } from '../data/balance';
 import type { KnowHowId, RoleId } from '../data/balance';
@@ -12,13 +12,13 @@ import { estimateFactory } from '../sim/analysis';
 import type { FactoryEstimate } from '../sim/analysis';
 import { conveyorActive, salaryOf } from '../sim/engine';
 import {
-  canPromote, canTrain, conveyorCost, knowHowCost, materialOk, priceMult, promotionCost, repLevel, skill, toolCost,
+  canPromote, canTrain, conveyorCost, knowHowCost, nightCost, nightDuration, nightRate, materialOk, priceMult, promotionCost, repLevel, skill, toolCost,
   toolSpeed, trainingCost,
 } from '../sim/formulas';
 import type { GameState, Worker } from '../sim/types';
 import * as U from './actions';
 import { esc } from './dom';
-import { fmt, fmtP, mmss, pct } from './format';
+import { dur, fmt, fmtP, mmss, pct } from './format';
 import type { View } from './panel';
 import { dataView } from './data';
 import { revenueRate } from './rates';
@@ -270,6 +270,31 @@ function foremanReport(s: GameState, fi: number, est: FactoryEstimate): string[]
   return out;
 }
 
+/** Équipe de nuit : rendement et durée, achetés niveau par niveau. */
+function nightSection(s: GameState, d: Record<string, boolean>, k: Record<string, string>, eta: Record<string, number>): string {
+  if (!A.nightAvailable(s)) {
+    if (s.act < 1) return '';
+    return `<div class="card dim"><div class="ic" aria-hidden="true">${lock}</div><div class="info"><div class="nm">Équipe de nuit</div><div class="vis">${ACT_NAMES[NIGHT.act].split(' — ')[0]} · fait tourner l’usine pendant votre absence.</div></div></div>`;
+  }
+  const n = s.night;
+  let h = `<div class="sec">Équipe de nuit<span data-k="nt"></span></div><div class="card col"><div class="row"><div class="ic" aria-hidden="true">🌙</div><div class="info"><div class="nm">Équipe de nuit</div><div class="vis">Quand vous n’êtes pas là, l’usine tourne au rendement de l’équipe, pendant sa durée de travail. La part de marché, elle, attend votre retour.</div></div></div><div class="btns">`;
+  if (n.rate < NIGHT.rate.max) {
+    const cost = nightCost('rate', n.rate);
+    h += `<button class="buy" type="button" data-act="night" data-i="rate" data-b="nr" data-fk="nr"><span class="c">${euros(cost)}</span><small>Rendement ${fmtP((n.rate + 1) * NIGHT.rate.per * 100, 1)} %</small></button>`;
+    d.nr = s.money < cost;
+    eta.nr = cost;
+  }
+  if (n.rate > 0 && n.duration < NIGHT.duration.max) {
+    const cost = nightCost('duration', n.duration);
+    h += `<button class="buy" type="button" data-act="night" data-i="duration" data-b="nd" data-fk="nd"><span class="c">${euros(cost)}</span><small>Durée ${dur(NIGHT.duration.base + (n.duration + 1) * NIGHT.duration.per)}</small></button>`;
+    d.nd = s.money < cost;
+    eta.nd = cost;
+  }
+  h += '</div></div>';
+  k.nt = n.rate > 0 ? `${fmtP(nightRate(s) * 100, 1)} % · ${dur(nightDuration(s))}` : 'pas encore d’équipe';
+  return h;
+}
+
 /** Filtre de la liste des ouvriers : -1 tous, 0 à 3 une chaîne, 4 les polyvalents. */
 let workerFilter = -1;
 
@@ -395,6 +420,9 @@ function vEquipe(s: GameState): View {
       eta['canteen'] = cost;
     }
   }
+  // Équipe de nuit
+  h += nightSection(s, d, k, eta);
+  sig += `|N${s.night.rate},${s.night.duration}`;
   // Encadrement
   h += '<div class="sec">Encadrement<span>informations et décisions</span></div>';
   for (const r of ROLES) {
@@ -664,6 +692,9 @@ export function onPanelAction(act: string, ds: DOMStringMap): void {
       break;
     case 'role':
       U.hireRole(i as RoleId);
+      break;
+    case 'night':
+      U.upgradeNight(i as A.NightKind);
       break;
     case 'dismiss':
       U.dismissRole(i as RoleId);

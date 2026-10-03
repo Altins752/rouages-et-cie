@@ -42,6 +42,7 @@ describe('sauvegarde versionnée', () => {
     const s = createGame(3);
     const raw = JSON.parse(serialize(s, 0));
     const prev = SAVE_VERSION - 1;
+    const real = migrations[prev];
     raw.version = prev;
     raw.state.money = 5;
     migrations[prev] = (d) => {
@@ -53,7 +54,8 @@ describe('sauvegarde versionnée', () => {
       expect(f.version).toBe(SAVE_VERSION);
       expect(f.state.money).toBe(42);
     } finally {
-      delete migrations[prev];
+      if (real) migrations[prev] = real;
+      else delete migrations[prev];
     }
   });
 
@@ -74,14 +76,22 @@ describe('sauvegarde versionnée', () => {
 });
 
 describe('progression hors ligne', () => {
-  it('l’usine tourne à vitesse ×1, plafonnée à 8 h', () => {
+  it('avant l’acte II, la forge ne tourne pas en l’absence du joueur', () => {
     const s = createGame(4);
     for (let i = 0; i < 3; i++) A.hire(s, 0);
     const r = catchUp(s, 3600);
-    expect(r.seconds).toBe(3600);
-    expect(r.sold).toBeGreaterThan(500);
-    expect(s.t).toBeCloseTo(3600, 0);
-    const s2 = createGame(4);
-    expect(catchUp(s2, 48 * 3600).seconds).toBe(8 * 3600);
+    expect(r.mode).toBe('none');
+    expect(r.sold).toBe(0);
+    expect(s.t).toBe(0);
+  });
+
+  it('v3 → v4 : une partie existante reçoit une équipe de nuit vide', () => {
+    const s = createGame(3);
+    const raw = JSON.parse(serialize(s, 0));
+    raw.version = 3;
+    delete raw.state.night;
+    const f = deserialize(JSON.stringify(raw))!;
+    expect(f.version).toBe(SAVE_VERSION);
+    expect(f.state.night).toEqual({ rate: 0, duration: 0 });
   });
 });

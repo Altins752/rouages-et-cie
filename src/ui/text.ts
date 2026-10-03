@@ -79,6 +79,22 @@ export const KNOW_HOW_DESC: Record<KnowHowId, string> = {
   energy: '−15 % de consommation électrique par niveau.',
 };
 
+/** Manque à gagner du rapport d'absence ({m} = montant). Ton pince-sans-rire, jamais culpabilisant. */
+export const MISSED_QUIPS = {
+  marcel: [
+    'Pendant que tu dormais, les établis ont pris la poussière. Ça fait {m} de pas gagnés. Mais bon, faut bien dormir.',
+    'Je dis pas ça pour toi, hein. Mais {m}, c’est {m}.',
+    'Ton grand-père, lui, dormait dans l’atelier. Je dis ça… {m} quand même.',
+    'J’ai compté les écrous qu’on n’a pas faits : {m}. Après, je suis allé me coucher aussi.',
+  ],
+  controller: [
+    '{m}, patron. Je dis ça, je dis rien.',
+    'Manque à gagner arrêté à {m}. Le café de la machine, lui, a coûté 0,40 €.',
+    'J’ai mis {m} dans la colonne « sommeil ». Elle est en rouge.',
+    'Un tableur ne dort jamais. Lui a calculé {m}.',
+  ],
+};
+
 export const ACT_NAMES = ['Prologue — La dette', 'Acte I — La ville', 'Acte II — La région', 'Acte III — Le pays', 'Acte IV — Le monde', 'Bac à sable'];
 export const SITE_NAMES = ['Forge du quartier', 'Forge du quartier', 'Usine de la région', 'Complexe national', 'Site mondial', 'Site mondial'];
 export const MARKET_NAMES = ['le quartier', 'la ville', 'la région', 'le pays', 'le monde', 'le monde'];

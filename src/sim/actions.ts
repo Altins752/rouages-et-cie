@@ -3,7 +3,7 @@
  * renvoie un résultat. Aucune action n'accède au DOM.
  */
 import {
-  ACTS, CANTEEN_COST, CONTRACTS, ENERGY, KNOW_HOW, LINES, MATERIALS, METHODS, POLY, PRESTIGE, PROLOGUE,
+  ACTS, CANTEEN_COST, CONTRACTS, ENERGY, KNOW_HOW, LINES, MATERIALS, METHODS, NIGHT, POLY, PRESTIGE, PROLOGUE,
   RESEARCH_EXTRA, REPUTATION, ROBOT_TIER, ROLES, SANDBOX_ACT, TIER_COUNT, TIER_MIN_ACT, TIER_OPERATOR_LEVEL,
   TIER_RESEARCH, TOOL_MAX, DOOR_POS,
 } from '../data/balance';
@@ -11,7 +11,7 @@ import type { KnowHowId, RoleId } from '../data/balance';
 import { machineRank, modernizeMachine, releaseWorker, startCourse } from './engine';
 import {
   canPromote, canTrain, conveyorCost, crankUseful, factoryValue, knowHow, knowHowCost, knowHowGain, machineCycle, materialOk,
-  modernizeCost, newFactoryCost, promotionCost, toolCost, trainingCost, unitPrice,
+  modernizeCost, newFactoryCost, nightCost, promotionCost, toolCost, trainingCost, unitPrice,
 } from './formulas';
 import { newFactory, newMachine, newWorker } from './state';
 import type { Factory, GameState, Worker } from './types';
@@ -387,6 +387,26 @@ export function unqualified(s: GameState, fi: number): Worker[] {
 
 export const LINE_COUNT = LINES;
 export const DOOR = DOOR_POS;
+
+// ---------------------------------------------------------------- Équipe de nuit
+
+export type NightKind = 'rate' | 'duration';
+
+export function nightAvailable(s: GameState): boolean {
+  return s.act >= NIGHT.act;
+}
+
+/** Renforcer l'équipe de nuit : rendement (+0,5 %) ou durée (+15 min). La durée suppose une équipe. */
+export function upgradeNight(s: GameState, kind: NightKind): Result {
+  if (!nightAvailable(s)) return fail('acte');
+  const lvl = s.night[kind];
+  if (lvl >= NIGHT[kind].max) return fail('max');
+  if (kind === 'duration' && s.night.rate === 0) return fail('équipe');
+  const cost = nightCost(kind, lvl);
+  if (!pay(s, cost)) return fail('argent');
+  s.night[kind] = lvl + 1;
+  return ok(cost);
+}
 
 // ---------------------------------------------------------------- Énergie
 

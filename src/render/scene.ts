@@ -1032,6 +1032,58 @@ function drawFloats(dt: number): void {
   ctx.globalAlpha = 1;
 }
 
+// ------------------------------------------------------------------ Équipe de nuit
+
+/** Gardiens de l'équipe de nuit (1 à 3 selon le rendement), visibles quand il fait nuit. */
+function guards(): number {
+  if (S.act < 2 || S.night.rate <= 0 || ambient(S.t) > 0.35) return 0;
+  return 1 + Math.floor(S.night.rate / 20);
+}
+
+function guardX(fi: number, k: number): number {
+  const ph = O.reduced ? 0.3 + k * 0.3 : Math.sin(O.T * 0.25 + fi * 1.7 + k * 2.1) * 0.5 + 0.5;
+  return 50 + ph * 300;
+}
+
+function drawGuards(fi: number): void {
+  const n = guards();
+  for (let k = 0; k < n; k++) {
+    const x = guardX(fi, k);
+    const y = HALL_H - 8;
+    const dir = O.reduced ? 1 : Math.cos(O.T * 0.25 + fi * 1.7 + k * 2.1) >= 0 ? 1 : -1;
+    // faisceau de la lampe
+    const g = ctx.createRadialGradient(x + dir * 6, y - 10, 1, x + dir * 30, y - 6, 34);
+    g.addColorStop(0, 'rgba(255,240,190,.45)');
+    g.addColorStop(1, 'rgba(255,240,190,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(x + dir * 5, y - 11);
+    ctx.lineTo(x + dir * 46, y - 26);
+    ctx.lineTo(x + dir * 46, y + 2);
+    ctx.fill();
+    glowDot(x + dir * 5, y - 11, 1.3, '255,240,190', 0.9);
+    // silhouette : blouson bleu nuit, casquette
+    ctx.strokeStyle = '#23262b';
+    ctx.lineWidth = 1.6;
+    const st = O.reduced ? 0 : Math.sin(O.T * 5 + k) * 1.4;
+    ctx.beginPath();
+    ctx.moveTo(x - 1, y - 7);
+    ctx.lineTo(x - 1 + st, y);
+    ctx.moveTo(x + 1, y - 7);
+    ctx.lineTo(x + 1 - st, y);
+    ctx.stroke();
+    ctx.fillStyle = '#1f2f4f';
+    rr(x - 3, y - 15, 6, 9, 1.5);
+    ctx.fill();
+    ctx.fillStyle = '#e7b892';
+    ctx.beginPath();
+    ctx.arc(x, y - 18, 2.3, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = '#16213a';
+    ctx.fillRect(x - 3, y - 21, 6.5, 1.8);
+  }
+}
+
 function drawInterior(f: Factory, fi: number, dt: number): void {
   drawRoom(f, fi);
   f.lines.forEach((line, l) => {
@@ -1060,6 +1112,8 @@ function drawInterior(f: Factory, fi: number, dt: number): void {
     ctx.fillStyle = `rgba(4,6,14,${dark})`;
     ctx.fillRect(0, 0, HALL_W, HALL_H);
   }
+  // la ronde passe par-dessus la pénombre
+  drawGuards(fi);
 }
 
 // ------------------------------------------------------------------ Extérieur
@@ -1118,6 +1172,8 @@ function drawExterior(f: Factory, ci: number, panels: number): void {
       glow.fillRect(x, 110, 40, 60);
     }
   }
+  // ronde de l'équipe de nuit : la lampe passe derrière les fenêtres basses
+  for (let k = 0; k < guards(); k++) glowDot(guardX(ci, k), FLOOR + 6, 2.4, '255,240,190', 0.8);
   // portail
   ctx.fillStyle = style === 'black' ? '#1c1f24' : '#5d646d';
   ctx.fillRect(160, 200, 80, FLOOR + 20 - 200);

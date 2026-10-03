@@ -1,6 +1,6 @@
 import './styles.css';
 import { ambience, initAudio, setSound, sfx, suspendAudio, workSound } from './audio/audio';
-import { SIM_DT } from './data/balance';
+import { NIGHT, SIM_DT } from './data/balance';
 import { G, inRed, loadSettings, newGame, saveSettings, tachoTick, tapBoost } from './game';
 import type { Tab } from './game';
 import { installDebug } from './debug';
@@ -21,13 +21,13 @@ import { clearSave, hasSave, loadLocal, saveLocal } from './save/save';
 import * as U from './ui/actions';
 import { updateConsole, updateGauge } from './ui/console';
 import { $, reducedMotion } from './ui/dom';
-import { dur, fmt } from './ui/format';
+import { dur, fmt, fmtP } from './ui/format';
 import { closeOverlay, overlayOpen, showEnd, showHelp, showMenu, showReport, showTitle } from './ui/overlay';
 import { initPanel, invalidatePanel, renderPanel, setTab } from './ui/panel';
 import { initTelex, telex, telexAdvance, telexClose, telexOpen } from './ui/telex';
 import { toast } from './ui/toast';
 import { showTooltip } from './ui/tooltip';
-import { ACT_NAMES, LEVEL_NAMES, STATION_NAMES } from './ui/text';
+import { ACT_NAMES, LEVEL_NAMES, MISSED_QUIPS, STATION_NAMES } from './ui/text';
 import { setPanelHooks } from './ui/views';
 
 // ------------------------------------------------------------------ Canvas
@@ -209,11 +209,21 @@ function absence(seconds: number): void {
   if (seconds < 5 || !G.started) return;
   const r = catchUp(G.s, seconds);
   if (r.seconds >= 60) {
-    const lines = [
-      `L’usine a tourné ${dur(r.seconds)} sans vous, à vitesse normale.`,
-      `${fmt(r.produced)} écrous produits, ${fmt(r.sold)} vendus.`,
-      `Caisse : ${r.money >= 0 ? '+' : '−'}${fmt(Math.abs(r.money))} €.${r.breakdowns ? ` ${r.breakdowns} panne${r.breakdowns > 1 ? 's' : ''} pendant votre absence.` : ''}`,
-    ];
+    const lines: string[] = [];
+    if (r.mode === 'grace') lines.push(`L’usine a continué de tourner pendant votre courte absence (${dur(r.seconds)}).`);
+    else if (r.mode === 'night') lines.push(`Absence : ${dur(r.seconds)}. L’équipe de nuit a tenu ${dur(r.worked)}, à ${fmtP(r.rate * 100, 1)} % de la cadence.`);
+    else if (G.s.act < NIGHT.act) lines.push(`Absence : ${dur(r.seconds)}. Sans vous, la forge s’est arrêtée.`);
+    else lines.push(`Absence : ${dur(r.seconds)}. Personne de nuit : l’usine est restée à l’arrêt. L’équipe de nuit se recrute dans l’onglet Équipe.`);
+    if (r.mode !== 'none') {
+      lines.push(`${fmt(r.produced)} écrous produits, ${fmt(r.sold)} vendus.`);
+      lines.push(`Caisse : ${r.money >= 0 ? '+' : '−'}${fmt(Math.abs(r.money))} €.${r.breakdowns ? ` ${r.breakdowns} panne${r.breakdowns > 1 ? 's' : ''} pendant votre absence.` : ''}`);
+    }
+    if (r.missed >= 1 && r.mode !== 'grace') {
+      const who = G.s.roles.controller ? 'controller' : 'marcel';
+      const q = MISSED_QUIPS[who][Math.floor(Math.random() * MISSED_QUIPS[who].length)].split('{m}').join(`${fmt(r.missed)} €`);
+      lines.push(`<b class="missed">Manque à gagner : −${fmt(r.missed)} €</b>`);
+      lines.push(`<i>« ${q} » — ${who === 'controller' ? 'le contrôleur de gestion' : 'Marcel'}</i>`);
+    }
     G.paused = true;
     showReport('Rapport d’absence', lines, () => (G.paused = false));
   }

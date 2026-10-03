@@ -19,6 +19,12 @@ type Migration = (data: Record<string, unknown>) => Record<string, unknown>;
 /** migrations[n] transforme une partie de version n en version n + 1. */
 export const migrations: Record<number, Migration> = {
   // v1 et v2 (avant la refonte en usines et chaînes) ne sont pas migrées : nouvelle partie.
+  // v3 → v4 : équipe de nuit, aucun niveau acheté.
+  3: (d) => {
+    const st = d.state as { night?: { rate: number; duration: number } };
+    st.night ??= { rate: 0, duration: 0 };
+    return d;
+  },
 };
 
 /** Complète récursivement les champs manquants avec les valeurs par défaut. */
