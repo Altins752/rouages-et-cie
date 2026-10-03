@@ -74,7 +74,8 @@ export function showHelp(onClose: () => void): void {
     'help',
     `<h2 id="ovTitle">Aide</h2>
     <p>Vous fabriquez des écrous sur une ligne à quatre postes : <b>découpe</b>, <b>frappe</b>, <b>taraudage</b>, <b>contrôle</b>. Le débit d’une chaîne est celui de son poste le plus lent : le <b>goulot</b>. Là où les pièces s’entassent, c’est là que ça coince.</p>
-    <p>Quatre leviers : le <b>personnel</b> (embaucher, former), la <b>technologie</b> (établis, machines, outillage), les <b>chaînes</b> (dupliquer la ligne) et le <b>matériau</b> (chaque écrou vaut plus).</p>
+    <p>Une usine compte quatre <b>chaînes</b>, achetées poste par poste. Quatre leviers : le <b>personnel</b> (chacun garde son poste ; former, puis promouvoir), la <b>technologie</b> (postes, machines, outillage, convoyeurs), les <b>usines</b> et le <b>matériau</b> (chaque écrou vaut plus).</p>
+    <p>Survolez un bouton d’achat : ce qu’il touche clignote dans l’usine. Sous un achat trop cher, le délai indique quand la caisse suffira au rythme actuel.</p>
     <p>Le clic ne fabrique rien : il <b>accélère le temps</b>. Clic maintenu = zone verte. Pour la zone rouge, il faut cliquer très vite… et les machines s’usent cinq fois plus.</p>
     <h3>Commandes</h3>
     <table>
@@ -82,8 +83,10 @@ export function showHelp(onClose: () => void): void {
       <tr><td>Clics rapides</td><td>Monter en zone rouge</td></tr>
       <tr><td>Molette</td><td>Zoomer sur l’usine</td></tr>
       <tr><td>Glisser</td><td>Se déplacer quand l’usine dépasse l’écran</td></tr>
-      <tr><td>Double-clic sur un hall</td><td>Choisir la chaîne affichée dans le panneau</td></tr>
+      <tr><td>Double-clic sur un hall</td><td>Choisir l’usine affichée dans le panneau</td></tr>
+      <tr><td>[ et ]</td><td>Usine précédente, usine suivante</td></tr>
       <tr><td>0</td><td>Recadrer la vue sur tout le site</td></tr>
+      <tr><td>+ et −</td><td>Zoomer, dézoomer</td></tr>
       <tr><td>1 à 5</td><td>Onglets Atelier, Équipe, R&amp;D, Marché, Données</td></tr>
       <tr><td>Entrée / Échap</td><td>Passer / fermer le télex</td></tr>
       <tr><td>H</td><td>Cette aide</td></tr>

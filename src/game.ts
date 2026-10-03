@@ -28,6 +28,8 @@ export const G = {
   /** Instant réel de la dernière action du joueur (aide contextuelle). */
   lastInput: 0,
   finale: null as null | { t: number },
+  /** Élément de la scène désigné par le bouton survolé dans le panneau (voir ui/panel). */
+  highlight: null as string | null,
 };
 
 export function vmax(): number {

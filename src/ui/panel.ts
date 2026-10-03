@@ -6,6 +6,7 @@ import { sfx } from '../audio/audio';
 import { G } from '../game';
 import type { Tab } from '../game';
 import { $ } from './dom';
+import { netRate } from './rates';
 import { VIEWS, onPanelAction, tabAlerts, tabLocked } from './views';
 
 export interface View {
@@ -14,6 +15,8 @@ export interface View {
   k: Record<string, string>;
   d: Record<string, boolean>;
   w: Record<string, number>;
+  /** Prix des boutons payants (clé data-b) : délai affiché tant que la caisse ne suffit pas. */
+  eta?: Record<string, number>;
   /** Classes à basculer : data-c="clé" → { clé: [classe, actif] } */
   c?: Record<string, [string, boolean]>;
   after?: (list: HTMLElement) => void;
@@ -47,9 +50,12 @@ function apply(L: ListEl, v: View): void {
       e.textContent = x;
     }
   }
+  const rate = netRate();
   for (const e of E.b) {
     const x = !!v.d[e.dataset.b!];
     if (e.disabled !== x) e.disabled = x;
+    const cost = v.eta?.[e.dataset.b!];
+    setEta(e, cost !== undefined && x && G.s.money < cost ? waitText(cost - G.s.money, rate) : '');
   }
   for (const e of E.w) {
     const x = v.w[e.dataset.w!];
@@ -62,6 +68,30 @@ function apply(L: ListEl, v: View): void {
     if (x) e.classList.toggle(x[0], x[1]);
   }
   v.after?.(L);
+}
+
+/** « dans 1 min 20 » : temps pour réunir la somme au bénéfice actuel. */
+function waitText(missing: number, rate: number): string {
+  if (rate <= 0.001) return 'recettes insuffisantes';
+  const t = Math.ceil(missing / rate);
+  if (t < 60) return `dans ${t} s`;
+  if (t < 3600) return `dans ${Math.floor(t / 60)} min ${String(t % 60).padStart(2, '0')}`;
+  if (t < 360000) return `dans ${Math.floor(t / 3600)} h ${String(Math.floor((t % 3600) / 60)).padStart(2, '0')}`;
+  return 'dans très longtemps';
+}
+
+function setEta(b: HTMLButtonElement, text: string): void {
+  let el = b.querySelector<HTMLElement>('.eta');
+  if (!text) {
+    if (el) el.remove();
+    return;
+  }
+  if (!el) {
+    el = document.createElement('span');
+    el.className = 'eta';
+    b.appendChild(el);
+  }
+  if (el.textContent !== text) el.textContent = text;
 }
 
 export function renderPanel(): void {
@@ -106,6 +136,15 @@ export function initPanel(): void {
     document.querySelector<HTMLElement>(`#tabs button[data-t="${n}"]`)?.focus();
     e.preventDefault();
   });
+  // Survol d'un bouton : l'élément concerné clignote dans la scène.
+  const hl = (e: Event) => {
+    const t = (e.target as HTMLElement).closest<HTMLElement>('[data-hl]');
+    G.highlight = t?.dataset.hl ?? null;
+  };
+  $('list').addEventListener('mouseover', hl);
+  $('list').addEventListener('focusin', hl);
+  $('list').addEventListener('mouseleave', () => (G.highlight = null));
+  $('list').addEventListener('focusout', () => (G.highlight = null));
   $('list').addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-act]');
     if (!b || (b as HTMLButtonElement).disabled) return;

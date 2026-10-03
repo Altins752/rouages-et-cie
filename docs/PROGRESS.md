@@ -95,6 +95,7 @@ Nouvelle partie obligatoire (sauvegarde v3, les anciennes sont refusées). Vocab
 - [x] R3 — Rendu : une usine = un hall à 4 rangées (chaînes numérotées), piles par chaîne, convoyeur à manivelle animé, portage visible, ouvriers fixes, silhouettes en pointillés aux postes vacants, jauge d'outillage, voyant « attend une promotion », cadences du contremaître au-dessus de chaque poste
 - [x] R4 — Interface : Atelier (chaînes, postes un par un, modernisation machine par machine, outillage par palier, convoyeurs, usines), Équipe (embaucher au poste libre, polyvalents, chaque ouvrier : former / promouvoir / licencier, rapport du contremaître, consigne de l'ingénieur méthodes, congédier un rôle, alerte salaires / recettes), recettes €/s sur le pupitre, info-bulles par chaîne et par poste
 - [x] R5 — Cadrage (§ 19), CLAUDE.md (invariants 2 et 4), décisions, e2e (38), captures, README, fichier unique
+- [x] Confort d’affichage : délai avant achat, repérage dans la scène au survol, « +€ » au-dessus de la caisse, touches [ et ], filtre des ouvriers par chaîne (40 tests e2e)
 
 ## Durées simulées
 

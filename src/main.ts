@@ -5,7 +5,7 @@ import { G, inRed, loadSettings, newGame, saveSettings, tachoTick, tapBoost } fr
 import type { Tab } from './game';
 import { installDebug } from './debug';
 import { setParticleBudget, sparks, updateParticles } from './render/particles';
-import { Camera, INTERIOR_PX, drawScene, hitTest, viewBounds, worldOfStation } from './render/scene';
+import { Camera, INTERIOR_PX, drawScene, hitTest, saleFloat, viewBounds, worldOfStation } from './render/scene';
 import type { Hover } from './render/scene';
 import { PostFx } from './render/postfx';
 import { hallOrigin } from './render/layout';
@@ -87,6 +87,32 @@ function interiorVisible(): boolean {
   return 400 * cam.zoom >= INTERIOR_PX;
 }
 
+/** Ventes cumulées depuis le dernier « +€ » affiché au-dessus de la caisse. */
+let saleAcc = 0;
+let saleT = 0;
+function saleTick(rdt: number): void {
+  saleT += rdt;
+  if (saleT < 1.2) return;
+  saleT = 0;
+  if (saleAcc > 0 && interiorVisible() && !G.paused) saleFloat(G.s, G.factory, `+${fmt(saleAcc)} €`);
+  saleAcc = 0;
+}
+
+/** Montre une usine : elle devient celle du panneau et la caméra s'y place. */
+function focusFactory(fi: number): void {
+  const n = G.s.factories.length;
+  G.factory = ((fi % n) + n) % n;
+  if (n > 1) {
+    const o = hallOrigin(G.factory, n);
+    cam.tx = o.x + 200;
+    cam.ty = o.y + 202;
+    cam.tz = Math.max(cam.tz, Math.min(cw / 420, ch / 424));
+    cam.user = true;
+  }
+  invalidatePanel();
+  renderPanel();
+}
+
 function handleEvents(events: SimEvent[]): void {
   const s = G.s;
   let pieces = 0;
@@ -107,6 +133,7 @@ function handleEvents(events: SimEvent[]): void {
       }
       case 'sale':
         sfx('coin');
+        saleAcc += e.value;
         break;
       case 'breakdown':
         sfx('fail', screenPan(e.factory, e.line, e.station));
@@ -372,15 +399,8 @@ stage.addEventListener('dblclick', (e) => {
   const r = stage.getBoundingClientRect();
   const h = hitTest(G.s, cam, (e.clientX - r.left) * dpr, (e.clientY - r.top) * dpr, cw, ch);
   if (h && G.s.factories.length > 1) {
-    G.factory = h.hall;
-    const o = hallOrigin(h.hall, G.s.factories.length);
-    cam.tx = o.x + 200;
-    cam.ty = o.y + 202;
-    cam.tz = Math.max(cam.tz, Math.min(cw / 420, ch / 424));
-    cam.user = true;
-    invalidatePanel();
     setTab('atelier');
-    renderPanel();
+    focusFactory(h.hall);
   } else cam.fit(viewBounds(G.s).b, cw, ch);
 });
 
@@ -424,6 +444,7 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (e.key === '0') cam.fit(viewBounds(G.s).b, cw, ch);
+  if (e.key === '[' || e.key === ']') focusFactory(G.factory + (e.key === ']' ? 1 : -1));
   if (e.key === '+' || e.key === '=') cam.zoomAt(1.25, cw / 2, ch / 2, cw, ch, viewBounds(G.s).b);
   if (e.key === '-') cam.zoomAt(0.8, cw / 2, ch / 2, cw, ch, viewBounds(G.s).b);
 });
@@ -570,11 +591,12 @@ function tick(now: number): void {
   }
   const useGl = post.ok && G.settings.fx;
   drawScene({ ctx, glow: useGl ? gctx : null, cw, ch }, view, cam, {
-    T: now / 1000, red: inRed(), rev: G.rev, selected: G.factory, reduced: reducedMotion(), finale: fin, hover,
+    T: now / 1000, red: inRed(), rev: G.rev, selected: G.factory, reduced: reducedMotion(), finale: fin, hover, highlight: G.highlight,
   }, rdt);
   post.render(useGl, cv, glowCv, now / 1000, view, inRed());
   updateGauge();
   ambientTick(view);
+  saleTick(rdt);
   $('hint').classList.toggle('show', G.started && !G.paused && s.act === 0 && s.t < 120 && G.lastInput === 0 && !telexOpen());
   uiT += rdt;
   if (uiT > 0.2) {

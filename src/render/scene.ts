@@ -118,6 +118,8 @@ export interface SceneOpts {
   /** Fin : lumières de l'usine noire (1 → 0) puis de la vieille forge (0 → 1). */
   finale?: { phase: 'off' | 'forge'; k: number };
   hover: Hover | null;
+  /** Élément désigné depuis le panneau : « u:usine:chaîne:poste », « m:… », « c:usine:chaîne », « t:palier:poste », « w:ouvrier ». */
+  highlight?: string | null;
 }
 
 /** Élément survolé : usine (hall), chaîne, poste (-2 = convoyeur), ouvrier. -1 = aucun. */
@@ -794,9 +796,9 @@ function drawWorker(w: Worker, idx: number, dt: number): void {
     ctx.textAlign = 'center';
     ctx.fillText(w.name, x, y - 27);
   }
-  if (O.hover && O.hover.worker === w.id) {
-    ctx.strokeStyle = '#ffd84a';
-    ctx.lineWidth = 0.8;
+  if ((O.hover && O.hover.worker === w.id) || hlWorker() === w.id) {
+    ctx.strokeStyle = hlWorker() === w.id ? `rgba(255,216,74,${hlAlpha()})` : '#ffd84a';
+    ctx.lineWidth = hlWorker() === w.id ? 1.4 : 0.8;
     ctx.beginPath();
     ctx.ellipse(x, y - 9, 7, 14, 0, 0, TAU);
     ctx.stroke();
@@ -941,6 +943,95 @@ function drawRoles(): void {
   }
 }
 
+/** Élément désigné depuis le panneau, découpé une fois par image. */
+function hlParts(): { kind: string; n: number[] } | null {
+  if (!O.highlight) return null;
+  const [kind, ...rest] = O.highlight.split(':');
+  return { kind, n: rest.map(Number) };
+}
+
+function hlAlpha(): number {
+  return O.reduced ? 0.9 : 0.55 + 0.45 * Math.sin(O.T * 7);
+}
+
+/** Cadre clignotant autour de ce que le bouton survolé va acheter ou modifier. */
+function drawHighlight(f: Factory, fi: number): void {
+  const h = hlParts();
+  if (!h) return;
+  ctx.save();
+  ctx.strokeStyle = `rgba(255,216,74,${hlAlpha()})`;
+  ctx.lineWidth = 2;
+  const box = (x: number, y: number, w: number, hh: number, dash = false) => {
+    ctx.setLineDash(dash ? [4, 3] : []);
+    rr(x, y, w, hh, 3);
+    ctx.stroke();
+  };
+  const [a, b, c] = h.n;
+  if ((h.kind === 'u' || h.kind === 'm') && a === fi) {
+    box(SX[c] - 36, LY[b] - 14, 60, 54, h.kind === 'u');
+    if (h.kind === 'u') {
+      ctx.fillStyle = `rgba(255,216,74,${hlAlpha()})`;
+      ctx.font = '700 16px "Share Tech Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('+', SX[c], LY[b] + 14);
+    }
+  } else if (h.kind === 'c' && a === fi) {
+    box(CRANK_X - 30, LY[b] + ROW_BASE - 34, SX[3] + 30 - (CRANK_X - 30), 44);
+  } else if (h.kind === 't') {
+    f.lines.forEach((line, l) => {
+      const m = line.slots[b];
+      if (m && m.tier === a) box(SX[b] - 22, LY[l] - 12, 44, 46);
+    });
+  }
+  ctx.restore();
+}
+
+/** Le hall concerné par l'élément désigné (vue extérieure). */
+function hlFactory(): number {
+  const h = hlParts();
+  return h && (h.kind === 'u' || h.kind === 'm' || h.kind === 'c') ? h.n[0] : -1;
+}
+
+function hlWorker(): number {
+  const h = hlParts();
+  return h && h.kind === 'w' ? h.n[0] : -1;
+}
+
+// ------------------------------------------------------------------ Gains qui montent de la caisse
+
+interface Float { x: number; y: number; text: string; col: string; life: number }
+const FLOATS: Float[] = [];
+
+/** « +12 € » qui s'élève au-dessus de la caisse de produits finis d'une usine. */
+export function saleFloat(s: GameState, fi: number, text: string, col = '#ffd84a'): void {
+  if (FLOATS.length > 12) FLOATS.shift();
+  const o = hallOrigin(Math.min(fi, s.factories.length - 1), s.factories.length);
+  FLOATS.push({ x: o.x + 330, y: o.y + FLOOR + 2, text, col, life: 1.6 });
+}
+
+function drawFloats(dt: number): void {
+  ctx.font = '700 11px "Share Tech Mono", monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineWidth = 3;
+  for (let i = FLOATS.length - 1; i >= 0; i--) {
+    const p = FLOATS[i];
+    p.life -= dt;
+    if (p.life <= 0) {
+      FLOATS.splice(i, 1);
+      continue;
+    }
+    if (!O.reduced) p.y -= dt * 16;
+    ctx.globalAlpha = Math.min(1, p.life / 0.6);
+    ctx.strokeStyle = 'rgba(0,0,0,.7)';
+    ctx.strokeText(p.text, p.x, p.y);
+    ctx.fillStyle = p.col;
+    ctx.fillText(p.text, p.x, p.y);
+  }
+  ctx.globalAlpha = 1;
+}
+
 function drawInterior(f: Factory, fi: number, dt: number): void {
   drawRoom(f, fi);
   f.lines.forEach((line, l) => {
@@ -954,6 +1045,7 @@ function drawInterior(f: Factory, fi: number, dt: number): void {
     });
   });
   drawBuffers(f, fi);
+  drawHighlight(f, fi);
   if (fi === 0) drawRoles();
   const ws = S.workers.filter((w) => w.factory === fi);
   ws.sort((a, b) => (WPOS.get(a.id)?.y ?? 0) - (WPOS.get(b.id)?.y ?? 0));
@@ -1423,6 +1515,11 @@ export function drawScene(t: DrawTarget, s: GameState, cam: Camera, o: SceneOpts
     if (interior) drawInterior(s.factories[ci], ci, dt);
     else drawExterior(s.factories[ci], ci, annex ? split.perHall[ci] : 0);
     ctx.restore();
+    if (!interior && hlFactory() === ci) {
+      ctx.strokeStyle = `rgba(255,216,74,${hlAlpha()})`;
+      ctx.lineWidth = 5 / cam.zoom;
+      ctx.strokeRect(-8, 10, HALL_W + 16, HALL_H);
+    }
     if (o.selected === ci && n > 1) {
       ctx.strokeStyle = '#f2b705';
       ctx.lineWidth = 3 / cam.zoom;
@@ -1450,6 +1547,7 @@ export function drawScene(t: DrawTarget, s: GameState, cam: Camera, o: SceneOpts
     }
   }
   ctx.globalAlpha = 1;
+  drawFloats(dt);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   // vignettage rouge en zone rouge
   if (o.red) {

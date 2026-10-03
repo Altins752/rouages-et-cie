@@ -86,6 +86,7 @@ function vAtelier(s: GameState): View {
   const k: Record<string, string> = {};
   const d: Record<string, boolean> = {};
   const w: Record<string, number> = {};
+  const eta: Record<string, number> = {};
   if (G.factory >= s.factories.length) G.factory = 0;
   const fi = G.factory;
   const f = s.factories[fi];
@@ -131,15 +132,16 @@ function vAtelier(s: GameState): View {
     h += '</div><div class="btns">';
     if (!line.conveyor && n >= 2 && line.slots.some((m) => m && m.tier < ROBOT_TIER)) {
       const cost = conveyorCost(f, l);
-      h += `<button class="buy${recOn(`cv${l}`) ? ' rec' : ''}" type="button" data-act="conveyor" data-i="${l}" data-b="cv${l}" data-fk="cv${l}"><span class="c">${euros(cost)}</span><small>Convoyeur à manivelle</small></button>`;
+      h += `<button class="buy${recOn(`cv${l}`) ? ' rec' : ''}" type="button" data-hl="c:${fi}:${l}" data-act="conveyor" data-i="${l}" data-b="cv${l}" data-fk="cv${l}"><span class="c">${euros(cost)}</span><small>Convoyeur à manivelle</small></button>`;
       d[`cv${l}`] = s.money < cost;
+      eta[`cv${l}`] = cost;
     }
     line.slots.forEach((m, st) => {
       if (!m) return;
       if (m.broken && m.service <= 0) {
-        h += `<button class="buy alt" type="button" data-act="repair" data-l="${l}" data-i="${st}" data-fk="r${l}${st}"><span class="c">${euros(A.repairCost(s, fi, l, st))}</span><small>Réparer ${STATION_NAMES[st].toLowerCase()}</small></button>`;
+        h += `<button class="buy alt" type="button" data-hl="m:${fi}:${l}:${st}" data-act="repair" data-l="${l}" data-i="${st}" data-fk="r${l}${st}"><span class="c">${euros(A.repairCost(s, fi, l, st))}</span><small>Réparer ${STATION_NAMES[st].toLowerCase()}</small></button>`;
       } else if (!m.broken && m.service <= 0 && m.tier > 0 && m.wear >= 0.4 && !s.research.preventive) {
-        h += `<button class="buy plain" type="button" data-act="service" data-l="${l}" data-i="${st}" data-fk="s${l}${st}"><span class="c">${euros(A.serviceCost(s, fi, l, st))}</span><small>Réviser ${STATION_NAMES[st].toLowerCase()}</small></button>`;
+        h += `<button class="buy plain" type="button" data-hl="m:${fi}:${l}:${st}" data-act="service" data-l="${l}" data-i="${st}" data-fk="s${l}${st}"><span class="c">${euros(A.serviceCost(s, fi, l, st))}</span><small>Réviser ${STATION_NAMES[st].toLowerCase()}</small></button>`;
       }
     });
     h += '</div></div>';
@@ -161,12 +163,14 @@ function vAtelier(s: GameState): View {
       const cost = A.addUnitCost(s, fi, st);
       const tier = A.newUnitTier(f, st);
       const l = f.lines.findIndex((x) => !x.slots[st]);
-      h += `<button class="buy${recOn(`u${st}`) ? ' rec' : ''}" type="button" data-act="unit" data-i="${st}" data-b="u${st}" data-fk="u${st}"><span class="c">${euros(cost)}</span><small>+1 ${tier ? 'machine' : 'établi'} → chaîne ${l + 1}</small></button>`;
+      h += `<button class="buy${recOn(`u${st}`) ? ' rec' : ''}" type="button" data-hl="u:${fi}:${l}:${st}" data-act="unit" data-i="${st}" data-b="u${st}" data-fk="u${st}"><span class="c">${euros(cost)}</span><small>+1 ${tier ? 'machine' : 'établi'} → chaîne ${l + 1}</small></button>`;
       d[`u${st}`] = s.money < cost;
+      eta[`u${st}`] = cost;
     }
     if (tgt) {
-      h += `<button class="buy${recOn(`m${st}`) ? ' rec' : ''}" type="button" data-act="modern" data-i="${st}" data-b="m${st}" data-fk="m${st}" title="${MACHINE_NAMES[tgt.tier + 1][st]}"><span class="c">${euros(tgt.cost)}</span><small>Moderniser chaîne ${tgt.line + 1} : ${TIER_NAMES[tgt.tier + 1].toLowerCase()}</small></button>`;
+      h += `<button class="buy${recOn(`m${st}`) ? ' rec' : ''}" type="button" data-hl="m:${fi}:${tgt.line}:${st}" data-act="modern" data-i="${st}" data-b="m${st}" data-fk="m${st}" title="${MACHINE_NAMES[tgt.tier + 1][st]}"><span class="c">${euros(tgt.cost)}</span><small>Moderniser chaîne ${tgt.line + 1} : ${TIER_NAMES[tgt.tier + 1].toLowerCase()}</small></button>`;
       d[`m${st}`] = s.money < tgt.cost;
+      eta[`m${st}`] = tgt.cost;
     }
     h += '</div></div>';
     const tiers = f.lines.map((x) => x.slots[st]).filter((m) => m).map((m) => TIER_SHORT[m!.tier]);
@@ -187,10 +191,11 @@ function vAtelier(s: GameState): View {
       if (lvl >= TOOL_MAX || t > s.research.tier) continue;
       const cost = toolCost(t, st, lvl);
       const gain = toolSpeed(lvl + 1) / toolSpeed(lvl) - 1;
-      h += `<button class="buy${recOn(`t${t}${st}`) ? ' rec' : ''}" type="button" data-act="tool" data-t="${t}" data-i="${st}" data-b="t${t}${st}" data-fk="t${t}${st}"><span class="c" data-k="tc${t}${st}"></span><small data-k="tg${t}${st}"></small></button>`;
+      h += `<button class="buy${recOn(`t${t}${st}`) ? ' rec' : ''}" type="button" data-hl="t:${t}:${st}" data-act="tool" data-t="${t}" data-i="${st}" data-b="t${t}${st}" data-fk="t${t}${st}"><span class="c" data-k="tc${t}${st}"></span><small data-k="tg${t}${st}"></small></button>`;
       k[`tc${t}${st}`] = euros(cost);
       k[`tg${t}${st}`] = `${tiers.length > 1 ? `${TIER_SHORT[t]} · ` : ''}niv. ${lvl + 1} · +${(gain * 100).toFixed(1).replace('.', ',')} %`;
       d[`t${t}${st}`] = s.money < cost;
+      eta[`t${t}${st}`] = cost;
     }
     h += '</div></div>';
     k[`to${st}`] = parts.join(' · ');
@@ -204,6 +209,7 @@ function vAtelier(s: GameState): View {
       h += `<div class="card${recOn('factory') ? ' rec' : ''}"><div class="ic" aria-hidden="true">🏭</div><div class="info"><div class="nm">Nouvelle usine</div><div class="vis">Un hall de plus, équipé comme votre meilleure usine (machines et convoyeurs). Les ouvriers sont à embaucher.</div></div>`;
       h += `<button class="buy${recOn('factory') ? ' rec' : ''}" type="button" data-act="buy-factory" data-b="factory" data-fk="factory"><span class="c">${euros(cost)}</span><small>Bâtir</small></button></div>`;
       d.factory = s.money < cost;
+      eta['factory'] = cost;
     } else h += `<div class="note">${lock} Site plein : ${max} usine${max > 1 ? 's' : ''} au plus${s.act < 4 ? '. Un site plus grand viendra avec le prochain marché.' : '.'}</div>`;
   }
   // Énergie
@@ -222,11 +228,12 @@ function vAtelier(s: GameState): View {
       if (!full) h += `<button class="buy" type="button" data-act="energy" data-i="${kind}" data-b="e${kind}" data-fk="e${kind}"><span class="c">${euros(cost)}</span><small>Installer</small></button>`;
       h += '</div>';
       d[`e${kind}`] = s.money < cost;
+      eta[`e${kind}`] = cost;
     }
     const ren = e.solarKw + e.windKw;
     k.en = `${fmt(e.demand)} kW · ${pct(e.demand > 0 ? Math.min(1, ren / e.demand) : 0)} renouvelable · ${fmtP(Math.max(0, e.cost))} €/s${e.cut ? ' · COUPURE' : ''}`;
   }
-  return { sig, html: h, k, d, w };
+  return { sig, html: h, k, d, w, eta };
 }
 
 // ------------------------------------------------------------------ Équipe
@@ -263,10 +270,14 @@ function foremanReport(s: GameState, fi: number, est: FactoryEstimate): string[]
   return out;
 }
 
+/** Filtre de la liste des ouvriers : -1 tous, 0 à 3 une chaîne, 4 les polyvalents. */
+let workerFilter = -1;
+
 function vEquipe(s: GameState): View {
   const k: Record<string, string> = {};
   const d: Record<string, boolean> = {};
   const w: Record<string, number> = {};
+  const eta: Record<string, number> = {};
   if (G.factory >= s.factories.length) G.factory = 0;
   const fi = G.factory;
   const ws = s.workers.filter((x) => x.factory === fi);
@@ -284,7 +295,7 @@ function vEquipe(s: GameState): View {
   h += '<div class="vis">Un ouvrier embauché prend le poste libre le plus utile et n’en change plus. Les polyvalents, moins chers et moins productifs, tiennent les postes vacants et relèvent les fatigués.</div></div></div>';
   h += '<div class="btns">';
   const nf = free[0];
-  h += `<button class="buy${recOn('hire') ? ' rec' : ''}" type="button" data-act="hire" data-b="hire" data-fk="hire"><span class="c">Embaucher</span><small data-k="hp"></small></button>`;
+  h += `<button class="buy${recOn('hire') ? ' rec' : ''}" type="button"${nf ? ` data-hl="${nf.kind === 'crank' ? `c:${fi}:${nf.line}` : `m:${fi}:${nf.line}:${nf.station}`}"` : ''} data-act="hire" data-b="hire" data-fk="hire"><span class="c">Embaucher</span><small data-k="hp"></small></button>`;
   d.hire = !nf;
   k.hp = nf ? (nf.kind === 'crank' ? `manivelle, chaîne ${nf.line + 1}` : `${STATION_NAMES[nf.station].toLowerCase()}, chaîne ${nf.line + 1}`) : 'aucun poste libre';
   h += `<button class="buy plain${recOn('poly') ? ' rec' : ''}" type="button" data-act="hire-poly" data-b="poly" data-fk="poly"><span class="c">Polyvalent</span><small>${polys}/${POLY.maxPerFactory} · ${pct(POLY.productivity)} de cadence</small></button></div></div>`;
@@ -316,10 +327,24 @@ function vEquipe(s: GameState): View {
   }
   // Ouvriers
   h += `<div class="sec">Ouvriers<span>former ×${TRAINING.perLevel}, puis promouvoir</span></div>`;
-  const order = [...ws].sort((a, b) => (a.kind === b.kind ? a.line * 10 + a.station - (b.line * 10 + b.station) : ['post', 'crank', 'poly'].indexOf(a.kind) - ['post', 'crank', 'poly'].indexOf(b.kind)));
+  const used = s.factories[fi].lines.map((l) => l.slots.some(Boolean));
+  if (workerFilter >= 0 && workerFilter < 4 && !used[workerFilter]) workerFilter = -1;
+  sig += `|F${workerFilter}`;
+  if (ws.length > 6) {
+    h += '<div class="seg" style="margin:0 2px 10px" role="group" aria-label="Filtrer les ouvriers">';
+    const opts: [number, string][] = [[-1, 'Tous'], ...used.map((u, l): [number, string] => [u ? l : -9, `Chaîne ${l + 1}`]), [4, 'Polyvalents']];
+    for (const [i, label] of opts) {
+      if (i === -9) continue;
+      const n = i < 0 ? ws.length : i === 4 ? ws.filter((x) => x.kind === 'poly').length : ws.filter((x) => x.kind !== 'poly' && x.line === i).length;
+      h += `<button type="button" data-act="w-filter" data-i="${i}" data-fk="wf${i}" class="${workerFilter === i ? 'on' : ''}">${label} · ${n}</button>`;
+    }
+    h += '</div>';
+  } else workerFilter = -1;
+  const shown = ws.filter((x) => workerFilter < 0 || (workerFilter === 4 ? x.kind === 'poly' : x.kind !== 'poly' && x.line === workerFilter));
+  const order = [...shown].sort((a, b) => (a.kind === b.kind ? a.line * 10 + a.station - (b.line * 10 + b.station) : ['post', 'crank', 'poly'].indexOf(a.kind) - ['post', 'crank', 'poly'].indexOf(b.kind)));
   for (const x of order) {
     const id = x.id;
-    h += `<div class="card col wk${recOn(`tr${id}`) ? ' rec' : ''}"><div class="row"><div class="info"><div class="nm">${esc(x.name)} <span class="tag">${LEVEL_NAMES[x.level]}</span> <span class="dots" aria-label="${x.trainings} formations sur ${TRAINING.perLevel}">${'●'.repeat(x.trainings)}${'○'.repeat(TRAINING.perLevel - x.trainings)}</span></div><div class="ef" data-k="wk${id}"></div>`;
+    h += `<div class="card col wk${recOn(`tr${id}`) ? ' rec' : ''}" data-hl="w:${id}"><div class="row"><div class="info"><div class="nm">${esc(x.name)} <span class="tag">${LEVEL_NAMES[x.level]}</span> <span class="dots" aria-label="${x.trainings} formations sur ${TRAINING.perLevel}">${'●'.repeat(x.trainings)}${'○'.repeat(TRAINING.perLevel - x.trainings)}</span></div><div class="ef" data-k="wk${id}"></div>`;
     if (s.roles.hr) h += `<div class="bar" style="height:4px;margin-top:3px"><i data-w="wm${id}" style="background:${x.morale < 0.5 ? '#ff5a4a' : '#57d987'}"></i></div>`;
     h += '</div><div class="btns mini">';
     if (x.kind !== 'crank') {
@@ -327,10 +352,12 @@ function vEquipe(s: GameState): View {
         const cost = promotionCost(s, x);
         h += `<button class="buy" type="button" data-act="promote" data-i="${id}" data-b="pr${id}" data-fk="pr${id}"><span class="c">${euros(cost)}</span><small>Promouvoir</small></button>`;
         d[`pr${id}`] = (s.money < cost && !A.urgent(s, x)) || x.state === 'train';
+        if (!A.urgent(s, x)) eta[`pr${id}`] = cost;
       } else if (x.trainings < TRAINING.perLevel) {
         const cost = trainingCost(s, x);
         h += `<button class="buy${recOn(`tr${id}`) ? ' rec' : ''}" type="button" data-act="train" data-i="${id}" data-b="tr${id}" data-fk="tr${id}"><span class="c">${euros(cost)}</span><small>Former</small></button>`;
         d[`tr${id}`] = (s.money < cost && !A.urgent(s, x)) || !canTrain(x);
+        if (!A.urgent(s, x)) eta[`tr${id}`] = cost;
       }
     }
     if (x.name !== 'Marcel') h += `<button class="buy plain" type="button" data-act="fire" data-i="${id}" data-fk="fi${id}"><span class="c">Licencier</span><small>poste vacant</small></button>`;
@@ -365,6 +392,7 @@ function vEquipe(s: GameState): View {
       const cost = A.canteenCost(s);
       h += `<div class="card"><div class="ic" aria-hidden="true">🍲</div><div class="info"><div class="nm">Cantine</div><div class="vis">+15 points de plafond de moral, il remonte 1,5 fois plus vite.</div></div><button class="buy" type="button" data-act="canteen" data-b="canteen" data-fk="canteen"><span class="c">${euros(cost)}</span><small>Ouvrir</small></button></div>`;
       d.canteen = s.money < cost;
+      eta['canteen'] = cost;
     }
   }
   // Encadrement
@@ -380,7 +408,7 @@ function vEquipe(s: GameState): View {
       h += `<div class="card"><div class="ic" aria-hidden="true">📋</div><div class="info"><div class="nm">${ROLE_NAMES[id]}</div><div class="vis">${ROLE_DATA[id]} ${ROLE_DECISION[id]}</div></div><button class="buy" type="button" data-act="role" data-i="${id}" data-fk="role${id}"><span class="c">Recruter</span><small>${fmtP(r.salary)} €/s</small></button></div>`;
     }
   }
-  return { sig, html: h, k, d, w };
+  return { sig, html: h, k, d, w, eta };
 }
 
 // ------------------------------------------------------------------ R&D
@@ -389,6 +417,7 @@ function vRD(s: GameState): View {
   const k: Record<string, string> = {};
   const d: Record<string, boolean> = {};
   const w: Record<string, number> = {};
+  const eta: Record<string, number> = {};
   const sig = `R${s.act}|${s.research.tier}|${s.research.materials.join('')}|${s.research.workshop}${s.research.preventive}${s.research.predictive}|${s.knowHow.points}|${Object.values(s.knowHow.levels).join('')}`;
   let h = '';
   if (s.act < 1) h += `<div class="note">${lock} Le bureau d’études ouvre à l’acte I, une fois la dette remboursée.</div>`;
@@ -396,6 +425,7 @@ function vRD(s: GameState): View {
     if (state === 'done') return `<div class="card"><div class="ic" aria-hidden="true">${icon}</div><div class="info"><div class="nm">${name} <span class="tag green">acquis</span></div><div class="vis">${desc}</div></div></div>`;
     if (state !== 'open') return `<div class="card dim"><div class="ic" aria-hidden="true">${lock}</div><div class="info"><div class="nm">${name}</div><div class="vis">${state}</div></div></div>`;
     d[`r${key}`] = s.money < cost;
+    eta[`r${key}`] = cost;
     return `<div class="card"><div class="ic" aria-hidden="true">${icon}</div><div class="info"><div class="nm">${name}</div><div class="vis">${desc}</div></div><button class="buy" type="button" data-act="rd" data-i="${key}" data-b="r${key}" data-fk="r${key}"><span class="c">${euros(cost)}</span><small>Rechercher</small></button></div>`;
   };
   h += '<div class="sec">Machines<span>paliers technologiques</span></div>';
@@ -442,7 +472,7 @@ function vRD(s: GameState): View {
       d[`kh${id}`] = s.knowHow.points < cost;
     }
   }
-  return { sig, html: h, k, d, w };
+  return { sig, html: h, k, d, w, eta };
 }
 
 // ------------------------------------------------------------------ Marché
@@ -451,6 +481,7 @@ function vMarche(s: GameState): View {
   const k: Record<string, string> = {};
   const d: Record<string, boolean> = {};
   const w: Record<string, number> = {};
+  const eta: Record<string, number> = {};
   const a = ACTS[s.act];
   const goal = a.goal;
   let sig = `M${s.act}|${s.market.goalReached}|${s.ended}|${s.spot.map((x) => x.id + (x.accepted ? 'a' : 'o')).join(',')}|${s.long.map((x) => x.id + (x.accepted ? 'a' : 'o')).join(',')}|${s.roles.logistics}${s.roles.sales}`;
@@ -490,6 +521,7 @@ function vMarche(s: GameState): View {
     h += `<div class="card col ${can ? 'rec' : ''}"><div class="row"><div class="ic" aria-hidden="true">🤝</div><div class="info"><div class="nm">Racheter Ferrum Industries</div><div class="vis">Et, avec elle, l’usine historique de votre grand-père.</div></div></div>`;
     h += `<div class="btns"><button class="buy" type="button" data-act="buyout" data-b="buyout" data-fk="buyout"><span class="c">${euros(goal.kind === 'cash' ? goal.amount : 0)}</span><small>Racheter</small></button></div></div>`;
     d.buyout = !can;
+    if (goal.kind === 'cash') eta.buyout = goal.amount;
   }
   if (s.act === 5) {
     const gain = A.pendingKnowHow(s);
@@ -539,7 +571,7 @@ function vMarche(s: GameState): View {
   h += `<div class="kv"><span>Recettes</span><b data-k="rv"></b></div><div class="kv"><span>Stock</span><b data-k="st"></b></div><div class="kv"><span>Demande maximale</span><b>${s.act === 5 ? 'illimitée' : `${fmt(a.market)} €/s`}</b></div></div>`;
   k.st = `${fmt(s.stock.reduce((x, y) => x + y, 0))} écrous`;
   k.rv = `${fmtP(revenueRate())} €/s`;
-  return { sig, html: h, k, d, w };
+  return { sig, html: h, k, d, w, eta };
 }
 
 // ------------------------------------------------------------------ Aiguillage
@@ -584,6 +616,9 @@ export function onPanelAction(act: string, ds: DOMStringMap): void {
   switch (act) {
     case 'factory-sel':
       G.factory = n;
+      break;
+    case 'w-filter':
+      workerFilter = n;
       break;
     case 'mat':
       U.setMaterial(n);

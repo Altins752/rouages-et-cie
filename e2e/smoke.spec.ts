@@ -77,6 +77,36 @@ test.describe('prologue sur PC', () => {
     await expect(page.getByRole('heading', { name: 'Aide' })).toBeHidden();
   });
 
+  test('confort : délai d’achat, repérage dans la scène, usine suivante', async ({ page }) => {
+    await newGame(page);
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => {
+      const r = (window as any).__rouages;
+      for (let i = 0; i < 4; i++) r.A.hire(r.G.s, 0);
+      r.G.s.money = 1;
+    });
+    // un achat trop cher annonce quand il sera possible
+    const unit = page.locator('[data-act="unit"][data-i="1"]');
+    await expect(unit.locator('.eta')).toContainText('dans');
+    // le survol désigne l'emplacement dans la scène
+    await unit.hover();
+    expect(await page.evaluate(() => (window as any).__rouages.G.highlight)).toBe('u:0:1:1');
+    await page.mouse.move(10, 10);
+    // [ et ] : usine précédente, suivante
+    await page.evaluate(() => {
+      const r = (window as any).__rouages;
+      r.G.s.act = 1;
+      r.G.s.money = 1e6;
+      r.A.buyFactory(r.G.s);
+      r.G.factory = 0;
+    });
+    await page.keyboard.press(']');
+    expect(await page.evaluate(() => (window as any).__rouages.G.factory)).toBe(1);
+    await page.keyboard.press(']');
+    expect(await page.evaluate(() => (window as any).__rouages.G.factory)).toBe(0);
+    await shot(page, 'confort');
+  });
+
   test('sauvegarde : la partie reprend après rechargement', async ({ page }) => {
     await newGame(page);
     await page.keyboard.press('Escape');
