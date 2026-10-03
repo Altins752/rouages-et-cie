@@ -106,3 +106,8 @@ Format : date — décision — raison.
 ## Le rival qui parle (2026-10-04)
 
 - 2026-10-04 — Le patron de Ferrum, G. Ferrand, envoie 12 télex au fil de la partie : narquois au début (« Une deuxième usine. Mignonne. »), de plus en plus nerveux à mesure que le joueur approche du rachat. Marcel répond à deux d'entre eux, dont celui sur les robots qui renvoie au choix de licencier ou de reconvertir. — Donne un visage à l'adversaire et ponctue la progression, sans système nouveau : de simples paliers d'histoire.
+
+## Partager entre amis (2026-10-04)
+
+- 2026-10-04 — Mode carte postale (touche P ou bouton du pupitre) : pupitre, panneau et carnet masqués, l'usine en plein écran ; « Capturer » enregistre l'image avec un bandeau (site, acte, écrous produits, date). — Le joueur montre son usine à ses amis sans capture d'écran bricolée.
+- 2026-10-04 — À la fin : « Carte de fin » (image 1200 × 630, le format des aperçus de liens : temps de jeu, écrous, chiffre d'affaires, usines, formations, promotions, reconvertis et licenciés, commandes, fin chaleureuse ou amère) et « Copier le résumé » (texte à coller dans une conversation). Rien n'est envoyé nulle part : tout reste sur l'ordinateur du joueur. — Permet de comparer les parties sans serveur.

@@ -327,3 +327,11 @@ kbd {
 .railing #list .btns > button:not(.guide-target), .railing #list .seg > button:not(.guide-target) { opacity: .4; pointer-events: none; }
 .railing #tabs button:not(.guide-target) { opacity: .45; pointer-events: none; }
 .tag.trait { color: #9fd3ff; border-color: #6aa7d8; }
+
+/* ---------------------------------------------------------------- Carte postale */
+body.postcard .console, body.postcard .panel, body.postcard #quests, body.postcard .telex, body.postcard .toasts,
+body.postcard #guide, body.postcard .stage-hint, body.postcard .tip { display: none !important; }
+body.postcard .app { grid-template-rows: minmax(0, 1fr); }
+body.postcard .floor { grid-template-columns: minmax(0, 1fr); }
+.postcard-bar { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); display: none; gap: 10px; z-index: 6; }
+body.postcard .postcard-bar { display: flex; }

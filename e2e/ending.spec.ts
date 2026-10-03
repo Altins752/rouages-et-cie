@@ -56,6 +56,12 @@ test.describe('acte IV, fin et bac à sable', () => {
     await expect(page.getByRole('heading', { name: 'Fin' })).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('#telex')).toHaveClass(/show/);
     await shot(page, 'fin-ecran');
+    // carte de fin : une image à partager
+    const dl = page.waitForEvent('download');
+    await page.locator('#ovCard').click();
+    const card = await dl;
+    expect(card.suggestedFilename()).toMatch(/^rouages-cie-fin-.*\.png$/);
+    await card.saveAs(`e2e/screens/${test.info().project.name}-carte-fin.png`);
     const st = await page.evaluate(() => {
       const s = (window as any).__rouages.G.s;
       return { act: s.act, ended: s.ended, ending: s.ending };

@@ -19,6 +19,7 @@ import { storyTick } from './story/director';
 import { guideActive, guideTick, stopGuide } from './ui/guide';
 import { resetQuests, updateQuests } from './ui/quests';
 import { freezeDebt, tutorialTick } from './ui/tutorial';
+import { copySummary, endCard, postcardOn, togglePostcard } from './ui/share';
 import { endingMsgs } from './story/script';
 import { clearSave, hasSave, loadLocal, saveLocal } from './save/save';
 import * as U from './ui/actions';
@@ -332,6 +333,7 @@ function finaleTick(): { phase: 'off' | 'forge'; k: number } | undefined {
         G.paused = false;
         invalidatePanel();
       },
+      { card: () => endCard(G.s), copy: () => void copySummary(G.s) },
     );
     G.paused = true;
   }
@@ -430,7 +432,8 @@ document.addEventListener('keydown', (e) => {
   markInput();
   const ov = overlayOpen();
   if (e.key === 'Escape') {
-    if (ov && ov !== 'title') closeOverlay();
+    if (postcardOn()) togglePostcard(false);
+    else if (ov && ov !== 'title') closeOverlay();
     else if (telexOpen()) telexClose();
     else if (guideActive()) stopGuide(true);
     return;
@@ -456,6 +459,10 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.key >= '1' && e.key <= '5' && !e.ctrlKey && !e.altKey && !e.metaKey) {
     setTab(TABS[+e.key - 1]);
+    return;
+  }
+  if ((e.key === 'p' || e.key === 'P') && G.started) {
+    togglePostcard();
     return;
   }
   if (e.key === 'h' || e.key === 'H') {
@@ -501,6 +508,7 @@ $('btnTheme').addEventListener('click', () => {
   saveSettings();
   applyTheme();
 });
+$('btnPhoto').addEventListener('click', () => togglePostcard(true));
 $('btnHelp').addEventListener('click', () => {
   G.paused = true;
   showHelp(() => (G.paused = false));

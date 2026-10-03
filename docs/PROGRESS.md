@@ -105,7 +105,7 @@ Nouvelle partie obligatoire (sauvegarde v3, les anciennes sont refusées). Vocab
 - [x] Commandes spéciales dès l'acte I, calées sur la production mesurée (3 difficultés, la moitié de la production du matériau au fil de l'eau) ; contrats ponctuels recalés de même ; campagne actif 5 h 13, 96 % des commandes tenues
 - [x] Caractère des ouvriers (rapide, endurant, bon camarade, soigneux, doué), sauvegarde v5 ; marché du quartier à 5 €/s ; campagne actif 5 h 08
 - [x] Télex narquois du patron de Ferrum (12 paliers, de narquois à nerveux)
-- [ ] Mode carte postale (capture) et carte de fin de partie
+- [x] Mode carte postale (touche P, capture PNG) et carte de fin de partie (image et résumé à copier)
 - [ ] Succès humoristiques
 - [ ] Carnet du grand-père en pages à collectionner
 - [ ] Radio de l'atelier

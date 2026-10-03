@@ -89,6 +89,7 @@ export function showHelp(onClose: () => void): void {
       <tr><td>+ et −</td><td>Zoomer, dézoomer</td></tr>
       <tr><td>1 à 5</td><td>Onglets Atelier, Équipe, R&amp;D, Marché, Données</td></tr>
       <tr><td>Entrée / Échap</td><td>Passer / fermer le télex</td></tr>
+      <tr><td>P</td><td>Carte postale : l’usine en grand, capture d’image</td></tr>
       <tr><td>H</td><td>Cette aide</td></tr>
       <tr><td>Tab, flèches</td><td>Naviguer au clavier dans le panneau</td></tr>
       <tr><td>Entrée</td><td>Activer le bouton sélectionné (la barre d’espace est réservée au temps)</td></tr>
@@ -153,15 +154,23 @@ export function showReport(title: string, lines: string[], onClose: () => void):
   $('ovClose').addEventListener('click', () => closeOverlay());
 }
 
-export function showEnd(lines: string[], onClose: () => void): void {
+export function showEnd(lines: string[], onClose: () => void, share?: { card: () => void; copy: () => void }): void {
   open(
     'end',
     `<h1 id="ovTitle">Fin</h1>
     <div class="subtitle">Rouages &amp; Cie a racheté Ferrum Industries.</div>
     ${lines.map((l) => `<p>${l}</p>`).join('')}
-    <div class="menu"><button class="buy" type="button" id="ovClose" data-autofocus><span class="c">Continuer en bac à sable</span><small>marché sans plafond, prestiges facultatifs</small></button></div>
+    <div class="menu">
+      <button class="buy plain" type="button" id="ovCard"><span class="c">📷 Carte de fin</span><small>image à partager</small></button>
+      <button class="buy plain" type="button" id="ovCopy"><span class="c">📋 Copier le résumé</span><small>à coller dans une conversation</small></button>
+      <button class="buy" type="button" id="ovClose" data-autofocus><span class="c">Continuer en bac à sable</span><small>marché sans plafond, prestiges facultatifs</small></button>
+    </div>
     <p class="credits">Rouages &amp; Cie — un jeu sur la cadence, l’organisation et la valeur d’une pièce. Merci d’avoir joué.</p>`,
     onClose,
   );
   $('ovClose').addEventListener('click', () => closeOverlay());
+  if (share) {
+    $('ovCard').addEventListener('click', () => share.card());
+    $('ovCopy').addEventListener('click', () => share.copy());
+  }
 }

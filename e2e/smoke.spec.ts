@@ -129,6 +129,21 @@ test.describe('prologue sur PC', () => {
     await expect(carnet).toContainText('Ouvrir un poste sur la chaîne 2');
   });
 
+  test('carte postale : l’usine seule, capture en PNG', async ({ page }) => {
+    await newGame(page);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('p');
+    await expect(page.locator('#panel')).toBeHidden();
+    await expect(page.locator('#console')).toBeHidden();
+    await expect(page.locator('#postcard')).toBeVisible();
+    await shot(page, 'carte-postale');
+    const dl = page.waitForEvent('download');
+    await page.locator('#pcShot').click();
+    expect((await dl).suggestedFilename()).toMatch(/^rouages-cie-.*.png$/);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#panel')).toBeVisible();
+  });
+
   test('sauvegarde : la partie reprend après rechargement', async ({ page }) => {
     await newGame(page);
     await page.keyboard.press('Escape');
