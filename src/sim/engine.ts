@@ -1038,7 +1038,7 @@ function contracts(s: GameState, dt: number): { revenue: number; raw: number; ba
       s.reputation = clamp(s.reputation + CONTRACTS.repSpotOk, 0, REPUTATION.max);
       s.stats.contractsDone++;
       s.spot.splice(k, 1);
-      emit(s, { type: 'spotDone', id: sc.id, value });
+      emit(s, { type: 'spotDone', id: sc.id, value, level: sc.level ?? 0, late: s.t > sc.deadline });
       continue;
     }
     if (s.t > sc.deadline) {

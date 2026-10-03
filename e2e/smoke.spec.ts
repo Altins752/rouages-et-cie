@@ -144,6 +144,23 @@ test.describe('prologue sur PC', () => {
     await expect(page.locator('#panel')).toBeVisible();
   });
 
+  test('succès : débloqués, listés dans le menu', async ({ page }) => {
+    await newGame(page);
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => {
+      const r = (window as any).__rouages;
+      r.G.s.money = 1e15;
+      for (let k = 0; k < 50; k++) r.A.upgradeTool(r.G.s, 0, 3);
+    });
+    await expect(page.locator('.toast', { hasText: 'Taylor serait fier' })).toBeVisible();
+    await page.getByRole('button', { name: /Menu/ }).click();
+    await page.locator('#ovAch').click();
+    await expect(page.locator('.ach li.on', { hasText: 'Taylor serait fier' })).toBeVisible();
+    await shot(page, 'succes');
+    await page.keyboard.press('Escape');
+    expect(await page.evaluate(() => (window as any).__rouages.G.paused)).toBe(false);
+  });
+
   test('sauvegarde : la partie reprend après rechargement', async ({ page }) => {
     await newGame(page);
     await page.keyboard.press('Escape');

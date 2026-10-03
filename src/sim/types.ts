@@ -273,7 +273,7 @@ export type SimEvent =
   | { type: 'goal' }
   | { type: 'ferrum'; event: 'poach' | 'war' | 'exclusive'; name?: string }
   | { type: 'warEnd' }
-  | { type: 'spotDone'; id: number; value: number }
+  | { type: 'spotDone'; id: number; value: number; level: number; late: boolean }
   | { type: 'spotFailed'; id: number }
   | { type: 'longBroken'; id: number }
   | { type: 'gridCut' }

@@ -335,3 +335,11 @@ body.postcard .app { grid-template-rows: minmax(0, 1fr); }
 body.postcard .floor { grid-template-columns: minmax(0, 1fr); }
 .postcard-bar { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); display: none; gap: 10px; z-index: 6; }
 body.postcard .postcard-bar { display: flex; }
+
+/* ---------------------------------------------------------------- Succès */
+.ach { list-style: none; margin: 8px 0 12px; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; max-height: 52vh; overflow: auto; }
+.ach li { display: flex; flex-direction: column; padding: 6px 8px; border-radius: 4px; background: rgba(0,0,0,.06); opacity: .55; }
+.ach li.on { opacity: 1; background: rgba(242,183,5,.16); }
+.ach b { font-size: 14px; }
+.ach span { font-size: 12.5px; }
+.ach-count { font: 14px 'Share Tech Mono', monospace; opacity: .7; margin-left: 8px; }

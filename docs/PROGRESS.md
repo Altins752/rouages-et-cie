@@ -106,7 +106,7 @@ Nouvelle partie obligatoire (sauvegarde v3, les anciennes sont refusées). Vocab
 - [x] Caractère des ouvriers (rapide, endurant, bon camarade, soigneux, doué), sauvegarde v5 ; marché du quartier à 5 €/s ; campagne actif 5 h 08
 - [x] Télex narquois du patron de Ferrum (12 paliers, de narquois à nerveux)
 - [x] Mode carte postale (touche P, capture PNG) et carte de fin de partie (image et résumé à copier)
-- [ ] Succès humoristiques
+- [x] Succès humoristiques (29, gardés dans le navigateur d'une partie à l'autre, liste dans le menu)
 - [ ] Carnet du grand-père en pages à collectionner
 - [ ] Radio de l'atelier
 - [ ] Défis de bac à sable

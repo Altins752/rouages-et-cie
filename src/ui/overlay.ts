@@ -100,10 +100,24 @@ export function showHelp(onClose: () => void): void {
   $('ovClose').addEventListener('click', () => closeOverlay());
 }
 
+/** Liste des succès : débloqués en clair, les autres en grisé. */
+export function showAchievements(list: { id: string; name: string; desc: string }[], got: Record<string, number>, onClose: () => void): void {
+  const n = list.filter((a) => got[a.id]).length;
+  open(
+    'achievements',
+    `<h2 id="ovTitle">Succès <small class="ach-count">${n}/${list.length}</small></h2>
+    <ul class="ach">${list.map((a) => `<li class="${got[a.id] ? 'on' : ''}"><b>${got[a.id] ? '🏆' : '🔒'} ${a.name}</b><span>${a.desc}</span></li>`).join('')}</ul>
+    <div class="menu"><button class="buy" type="button" id="ovClose" data-autofocus><span class="c">Reprendre</span><small>Échap</small></button></div>`,
+    onClose,
+  );
+  $('ovClose').addEventListener('click', () => closeOverlay());
+}
+
 export interface MenuOpts {
   onResume: () => void;
   onNew: () => void;
   stats: string;
+  achievements: () => void;
   tutorial: boolean;
   onTutorial: (on: boolean) => void;
 }
@@ -116,6 +130,7 @@ export function showMenu(o: MenuOpts): void {
     <p>${o.stats}</p>
     <div class="menu">
       <button class="buy" type="button" id="ovRes" data-autofocus><span class="c">Reprendre</span><small>Échap</small></button>
+      <button class="buy plain" type="button" id="ovAch"><span class="c">🏆 Succès</span><small>gardés d’une partie à l’autre</small></button>
       <button class="buy plain" type="button" id="ovTut" aria-pressed="${o.tutorial}"><span class="c" id="ovTutC">Tutoriel : ${o.tutorial ? 'activé' : 'désactivé'}</span><small>Marcel guide au début de chaque phase</small></button>
       <button class="buy alt" type="button" id="ovNew"><span class="c">Nouvelle partie</span><small id="ovNewSub">efface la partie en cours</small></button>
     </div>
@@ -123,6 +138,11 @@ export function showMenu(o: MenuOpts): void {
     o.onResume,
   );
   $('ovRes').addEventListener('click', () => closeOverlay());
+  $('ovAch').addEventListener('click', () => {
+    closeHandler = null;
+    closeOverlay();
+    o.achievements();
+  });
   let tut = o.tutorial;
   $('ovTut').addEventListener('click', () => {
     tut = !tut;

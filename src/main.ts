@@ -20,13 +20,15 @@ import { guideActive, guideTick, stopGuide } from './ui/guide';
 import { resetQuests, updateQuests } from './ui/quests';
 import { freezeDebt, tutorialTick } from './ui/tutorial';
 import { copySummary, endCard, postcardOn, togglePostcard } from './ui/share';
+import { achievementsTick, unlock, unlocked } from './ui/achievements';
+import { ACHIEVEMENTS } from './story/achievements';
 import { endingMsgs } from './story/script';
 import { clearSave, hasSave, loadLocal, saveLocal } from './save/save';
 import * as U from './ui/actions';
 import { updateConsole, updateGauge } from './ui/console';
 import { $, reducedMotion } from './ui/dom';
 import { dur, fmt, fmtP } from './ui/format';
-import { closeOverlay, overlayOpen, showEnd, showHelp, showMenu, showReport, showTitle } from './ui/overlay';
+import { closeOverlay, overlayOpen, showAchievements, showEnd, showHelp, showMenu, showReport, showTitle } from './ui/overlay';
 import { initPanel, invalidatePanel, renderPanel, setTab } from './ui/panel';
 import { initTelex, telex, telexAdvance, telexClose, telexOpen } from './ui/telex';
 import { toast } from './ui/toast';
@@ -166,6 +168,7 @@ function handleEvents(events: SimEvent[]): void {
         break;
       case 'spotDone':
         sfx('cash');
+        if (e.level === 2) unlock('rush');
         toast(`📄 ${s.act < 2 ? 'Commande' : 'Contrat'} livré${s.act < 2 ? 'e' : ''} : +${fmt(e.value)} €`);
         break;
       case 'spotFailed':
@@ -226,6 +229,7 @@ function absence(seconds: number): void {
       lines.push(`${fmt(r.produced)} écrous produits, ${fmt(r.sold)} vendus.`);
       lines.push(`Caisse : ${r.money >= 0 ? '+' : '−'}${fmt(Math.abs(r.money))} €.${r.breakdowns ? ` ${r.breakdowns} panne${r.breakdowns > 1 ? 's' : ''} pendant votre absence.` : ''}`);
     }
+    if (r.missed >= 1e6) unlock('insomnia');
     if (r.missed >= 1 && r.mode !== 'grace') {
       const who = G.s.roles.controller ? 'controller' : 'marcel';
       const q = MISSED_QUIPS[who][Math.floor(Math.random() * MISSED_QUIPS[who].length)].split('{m}').join(`${fmt(r.missed)} €`);
@@ -522,6 +526,7 @@ $('btnMenu').addEventListener('click', () => {
       startNew();
     },
     tutorial: G.settings.tutorial,
+    achievements: () => showAchievements(ACHIEVEMENTS, unlocked(), () => (G.paused = false)),
     onTutorial: (on: boolean) => {
       G.settings.tutorial = on;
       saveSettings();
@@ -641,6 +646,10 @@ function tick(now: number): void {
     updateConsole();
     renderPanel();
     updateQuests();
+    if (G.started) {
+      achievementsTick(s);
+      if (inRed()) unlock('red');
+    }
   }
 }
 

@@ -111,3 +111,8 @@ Format : date — décision — raison.
 
 - 2026-10-04 — Mode carte postale (touche P ou bouton du pupitre) : pupitre, panneau et carnet masqués, l'usine en plein écran ; « Capturer » enregistre l'image avec un bandeau (site, acte, écrous produits, date). — Le joueur montre son usine à ses amis sans capture d'écran bricolée.
 - 2026-10-04 — À la fin : « Carte de fin » (image 1200 × 630, le format des aperçus de liens : temps de jeu, écrous, chiffre d'affaires, usines, formations, promotions, reconvertis et licenciés, commandes, fin chaleureuse ou amère) et « Copier le résumé » (texte à coller dans une conversation). Rien n'est envoyé nulle part : tout reste sur l'ordinateur du joueur. — Permet de comparer les parties sans serveur.
+
+## Succès (2026-10-04)
+
+- 2026-10-04 — 29 succès dans le ton du jeu (« Taylor serait fier », « Ça coince ici », « Insomniaque », « Marcel, jamais », « Le prix du progrès »…), annoncés par un message et listés dans le menu. La plupart se lisent dans l'état de la partie ; quatre sont déclenchés par l'interface (zone rouge, commande « coup de bourre » livrée, manque à gagner d'un million, carte postale). — Récompense la curiosité et l'exploration des systèmes, sans effet sur l'équilibrage.
+- 2026-10-04 — Les succès sont gardés dans le navigateur (clé à part), d'une partie à l'autre, et non dans la sauvegarde. — Comme dans la plupart des jeux : une nouvelle partie ne les efface pas ; aucun changement du format de sauvegarde.

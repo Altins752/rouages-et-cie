@@ -8,6 +8,7 @@ import type { GameState } from '../sim/types';
 import { $ } from './dom';
 import { dur, fmt } from './format';
 import { ACT_NAMES, SITE_NAMES } from './text';
+import { unlock } from './achievements';
 import { toast } from './toast';
 
 export function postcardOn(): boolean {
@@ -97,6 +98,7 @@ export function capture(): void {
   download(c, `rouages-cie-${stamp()}.png`);
   sfx('cash');
   toast('📷 Carte postale enregistrée');
+  unlock('postcard');
 }
 
 /** Résumé texte de fin de partie, à coller dans une conversation. */
