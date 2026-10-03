@@ -23,6 +23,13 @@ const BANK = 'Banque Populaire du Quartier';
 const MARCEL = 'Marcel';
 const NOTE = 'Carnet du grand-père';
 const FERRUM = 'Ferrum Industries';
+/** Somme du rachat de Ferrum (objectif de l'acte IV). */
+const buyoutAmount = (): number => {
+  const g = ACTS[4].goal;
+  return g.kind === 'cash' ? g.amount : Infinity;
+};
+/** Le patron de Ferrum : narquois au début, de plus en plus nerveux. */
+const BOSS = 'Ferrum Industries · G. Ferrand, PDG';
 const CCI = 'Chambre de commerce';
 const GRID = 'Réseau électrique';
 const BOURSE = 'Bourse de Paris';
@@ -213,6 +220,73 @@ export const BEATS: Beat[] = [
     id: 'sandbox',
     when: (s) => s.act === 5,
     msgs: () => [m(MARCEL, 'Le monde entier, sans plafond. Faites-en ce que vous voulez.\nEt quand l’envie vous prend, un nouveau site repart de zéro avec tout notre savoir-faire (onglet Marché).')],
+  },
+  // ------------------------------------------------------------- Le rival
+  {
+    id: 'rival-forge',
+    when: (s) => s.act === 1 && s.actT > 90,
+    msgs: () => [m(BOSS, 'Félicitations pour votre petite dette remboursée.\nUne forge de quartier, c’est charmant. Nous en avions une, autrefois.')],
+  },
+  {
+    id: 'rival-second',
+    when: (s) => s.act === 1 && s.factories.length >= 2,
+    msgs: () => [m(BOSS, 'Une deuxième usine. Mignonne.\nNous en avons quarante-deux.')],
+  },
+  {
+    id: 'rival-quarter',
+    when: (s) => s.act === 1 && s.market.shareEma >= 0.25,
+    msgs: () => [m(BOSS, 'Un quart de la ville ? Gardez-le.\nNous gardons les trois autres.')],
+  },
+  {
+    id: 'rival-region',
+    when: (s) => s.act === 2 && s.actT > 120,
+    msgs: () => [m(BOSS, 'La région ? Nos avocats vous y attendaient.\nBienvenue.')],
+  },
+  {
+    id: 'rival-semi',
+    when: (s) => allMachines(s).some((x) => x.tier >= 2),
+    msgs: () => [m(BOSS, 'Vous avez découvert le semi-automatique.\nNous, c’était en 1987.')],
+  },
+  {
+    id: 'rival-night',
+    when: (s) => s.night.rate >= 1,
+    msgs: () => [m(BOSS, 'Une équipe de nuit. Vous dormez donc moins que moi ?\nC’est… impressionnant.')],
+  },
+  {
+    id: 'rival-nervous',
+    when: (s) => s.act >= 2 && s.act <= 3 && s.market.shareEma >= 0.4,
+    msgs: () => [m(BOSS, 'Je ne vous cache pas que nos actionnaires posent des questions.\nÀ votre sujet. Beaucoup de questions.')],
+  },
+  {
+    id: 'rival-country',
+    when: (s) => s.act === 3 && s.actT > 120,
+    msgs: () => [m(BOSS, 'Le pays entier. Je vais être franc :\nvous commencez à m’agacer.')],
+  },
+  {
+    id: 'rival-robot',
+    when: (s) => allMachines(s).some((x) => x.tier >= 3),
+    msgs: () => [
+      m(BOSS, 'Des robots ! Vous remerciez vos ouvriers, maintenant ?\nFinalement, nous ne sommes pas si différents.'),
+      m(MARCEL, 'Il a tort, patron. Enfin… ça dépend de ce qu’on fait des gars.'),
+    ],
+  },
+  {
+    id: 'rival-billion',
+    when: (s) => s.act === 4 && s.money >= buyoutAmount() * 0.5,
+    msgs: () => [m(BOSS, 'La moitié de la somme, déjà.\nMes conseillers parlent de « menace ». Moi, je parle de mauvais rêve.')],
+  },
+  {
+    id: 'rival-diamond',
+    when: (s) => s.factories.some((f) => f.material >= 6),
+    msgs: () => [m(BOSS, 'Du diamant. Mon père disait que votre grand-père était têtu.\nJe vois que c’est héréditaire.')],
+  },
+  {
+    id: 'rival-close',
+    when: (s) => s.act === 4 && s.money >= buyoutAmount() * 0.8,
+    msgs: () => [
+      m(BOSS, 'Faisons une offre raisonnable, entre gens raisonnables.\n… Non ? Bien. Je vois.'),
+      m(MARCEL, 'Il a peur, patron. Pour la première fois en quarante ans, c’est lui qui a peur.'),
+    ],
   },
 ];
 

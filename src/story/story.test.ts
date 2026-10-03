@@ -88,6 +88,18 @@ describe('histoire', () => {
     for (let act = 0; act <= 4; act++) expect(QUESTS.filter((q) => q.act === act && q.goal).length).toBe(1);
   });
 
+  it('le patron de Ferrum commente vos progrès, une fois chacun', () => {
+    const s = createGame(1);
+    s.money = 1000;
+    A.payDebt(s);
+    s.money = 1e6;
+    storyTick(s);
+    A.buyFactory(s);
+    const out1 = storyTick(s);
+    expect(out1.msgs.some((m) => m.from.includes('Ferrand') && m.text.includes('deuxième usine'))).toBe(true);
+    expect(storyTick(s).msgs.some((m) => m.text.includes('deuxième usine'))).toBe(false);
+  });
+
   it('chaque palier a un identifiant unique', () => {
     const ids = BEATS.map((b) => b.id);
     expect(new Set(ids).size).toBe(ids.length);
