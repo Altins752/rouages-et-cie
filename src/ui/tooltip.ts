@@ -7,7 +7,7 @@ import { conveyorActive, salaryOf } from '../sim/engine';
 import { skill } from '../sim/formulas';
 import { $, esc } from './dom';
 import { fmtP, pct } from './format';
-import { KIND_NAMES, LEVEL_NAMES, MACHINE_NAMES, MATERIAL_NAMES, STATION_NAMES, TIER_NAMES, TIER_SHORT } from './text';
+import { KIND_NAMES, TRAIT_DESC, TRAIT_NAMES, LEVEL_NAMES, MACHINE_NAMES, MATERIAL_NAMES, STATION_NAMES, TIER_NAMES, TIER_SHORT } from './text';
 
 const row = (a: string, b: string) => `<div class="row"><span>${a}</span><span>${b}</span></div>`;
 
@@ -26,6 +26,7 @@ export function tooltipHtml(h: Hover): string {
     let html = `<b>${esc(w.name)}</b>${row(LEVEL_NAMES[w.level], what)}`;
     html += row(KIND_NAMES[w.kind], w.kind === 'crank' ? `chaîne ${w.line + 1}` : w.kind === 'post' ? `${STATION_NAMES[w.station].toLowerCase()}, chaîne ${w.line + 1}` : 'tous postes');
     if (w.kind !== 'crank') html += row('Formations', `${w.trainings}/${TRAINING.perLevel} · cadence ×${fmtP(skill(w))}`);
+    if (w.trait) html += row('Caractère', `${TRAIT_NAMES[w.trait]} : ${TRAIT_DESC[w.trait]}`);
     html += row('Salaire', `${fmtP(salaryOf(w))} €/s`);
     if (s.roles.hr) html += row('Moral', pct(w.morale)) + row('Occupation', pct(w.load));
     return html;

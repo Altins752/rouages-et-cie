@@ -326,3 +326,4 @@ kbd {
 .railing #list > :not(:has(.guide-target)):not(.guide-target) { opacity: .32; pointer-events: none; filter: saturate(.4); }
 .railing #list .btns > button:not(.guide-target), .railing #list .seg > button:not(.guide-target) { opacity: .4; pointer-events: none; }
 .railing #tabs button:not(.guide-target) { opacity: .45; pointer-events: none; }
+.tag.trait { color: #9fd3ff; border-color: #6aa7d8; }

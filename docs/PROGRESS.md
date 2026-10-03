@@ -103,7 +103,7 @@ Nouvelle partie obligatoire (sauvegarde v3, les anciennes sont refusées). Vocab
 - [x] Quêtes : carnet de Marcel (3 actives + l'objectif de l'acte), récompenses en argent ou outillage offert, « Aide Marcel » pas à pas (bulle + cible qui clignote) ; remplacent les jalons ; campagne actif 5 h 12
 - [x] Rail de Marcel : complet au prologue (panneau grisé, dette gelée), court à chaque acte (explications), « Je connais, Marcel », option du menu
 - [x] Commandes spéciales dès l'acte I, calées sur la production mesurée (3 difficultés, la moitié de la production du matériau au fil de l'eau) ; contrats ponctuels recalés de même ; campagne actif 5 h 13, 96 % des commandes tenues
-- [ ] Traits des ouvriers
+- [x] Caractère des ouvriers (rapide, endurant, bon camarade, soigneux, doué), sauvegarde v5 ; marché du quartier à 5 €/s ; campagne actif 5 h 08
 - [ ] Télex narquois du patron de Ferrum
 - [ ] Mode carte postale (capture) et carte de fin de partie
 - [ ] Succès humoristiques

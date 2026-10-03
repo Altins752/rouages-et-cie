@@ -81,7 +81,7 @@ Validés en jeu, à reporter dans `docs/cadrage.md` :
 - Temps de cycle manuels divisés par deux : 2 / 3 / 2,5 / 1 s.
 - Établis : 15 / 20 / 18 / 12 €.
 - Nouveau levier « outillage » : 50 niveaux par poste et par palier, commun à toutes les machines identiques (refonte v2, cadrage § 19).
-- Prologue : 20 € de départ, marché 4 €/s, dette 800 €, échéance 20 min de jeu.
+- Prologue : 20 € de départ, marché 5 €/s (4 €/s dans le POC, relevé avec les caractères des ouvriers), dette 800 €, échéance 20 min de jeu.
 - Compte-tours : régime `rev` de 0 à 1 ; tap +0,12 × √(1 − rev) ; retombée (0,08 + 0,5 × rev²)/s ; appui long jusqu'à 0,5 ; zone rouge au-delà de 0,8 ; vitesse = 1 + rev × (max − 1), max ×3 au prologue et ×4 à l'acte I.
 
 ## Plateforme : PC

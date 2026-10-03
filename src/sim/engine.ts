@@ -12,12 +12,12 @@
 import {
   ACTS, BUFFER_CAP, CARRY_TIME, CONTRACTS, CRISIS_GAP, ENERGY, FERRUM, MATERIALS, METHODS, MORALE, POLY, PROLOGUE,
   ROBOT_NO_TECH_FACTOR, ROBOT_TIER, BLACK_TIER, ROLES, TIER_KW, TIER_OPERATOR_LEVEL, WALK_TIME, WEAR, WORKER_SALARY,
-  DOOR_POS, REPUTATION, ASSIGN,
+  DOOR_POS, REPUTATION, ASSIGN, MATE, TRAITS,
 } from '../data/balance';
 import { daylight, windFactor } from './env';
 import {
   canPromote, canTrain, clamp, knowHow, machineCycle, modernizeCost, moraleActive, moraleCap, priceMult,
-  promotionCost, promotionTime, scrapRate, trainingCost, trainingTime, unitPrice, workerSpeed,
+  promotionCost, promotionTime, scrapRate, trainingCost, trainingTime, trait, unitPrice, workerSpeed,
 } from './formulas';
 import { rand, randInt, randRange } from './rng';
 import { machines } from './state';
@@ -781,6 +781,8 @@ function methodsDecisions(s: GameState): void {
 function wearAndBreakdowns(s: GameState, dt: number, red: boolean): number {
   let spent = 0;
   const kwear = (1 - knowHow(s, 'wear')) * (red ? WEAR.redZoneFactor : 1);
+  const careful = new Set<number>();
+  for (const w of s.workers) if (w.trait === 'careful') careful.add(w.id);
   for (let fi = 0; fi < s.factories.length; fi++) {
     const f = s.factories[fi];
     const k = MATERIALS[f.material].k;
@@ -789,7 +791,8 @@ function wearAndBreakdowns(s: GameState, dt: number, red: boolean): number {
       if (u.broken || u.service > 0) continue;
       const mf = 1 + (k - 1) * [0.5, 1, 1, 0.3][st];
       const load = u.busyT + WEAR.idleFactor * Math.max(0, dt - u.busyT);
-      u.wear = Math.min(1, u.wear + (load / WEAR.fullLoadTime) * mf * kwear);
+      const care = u.post >= 0 && careful.has(u.post) ? TRAITS.find((t) => t.id === 'careful')!.wear : 1;
+      u.wear = Math.min(1, u.wear + (load / WEAR.fullLoadTime) * mf * kwear * care);
       const price = unitPrice(u.tier, st, machineRank(f, l, st));
       if (s.research.preventive && u.wear >= WEAR.preventiveAt) {
         const share = s.research.predictive ? WEAR.predictiveShare : WEAR.preventiveShare;
@@ -1077,9 +1080,13 @@ function morale(s: GameState, dt: number): void {
   if (!moraleActive(s)) return;
   const cap = moraleCap(s);
   const rec = (s.canteen > 0 ? MORALE.canteenRecovery : 1) * (s.roles.hr ? MORALE.hrRecovery : 1);
+  // bons camarades : leur chaîne (ou toute l'usine pour un polyvalent)
+  const mates = new Set<string>();
+  for (const w of s.workers) if (w.trait === 'mate' && w.state !== 'train') mates.add(w.kind === 'poly' ? `${w.factory}` : `${w.factory}:${w.line}`);
   for (const w of s.workers) {
-    if (w.load > MORALE.highLoad) w.morale -= (MORALE.dropPerMin / 60) * dt;
-    else if (w.load < MORALE.lowLoad) w.morale += (MORALE.risePerMin / 60) * dt * rec;
+    const mate = mates.size > 0 && (mates.has(`${w.factory}`) || mates.has(`${w.factory}:${w.line}`));
+    if (w.load > MORALE.highLoad) w.morale -= (MORALE.dropPerMin / 60) * dt * trait(w).fatigue * (mate ? MATE.drop : 1);
+    else if (w.load < MORALE.lowLoad) w.morale += (MORALE.risePerMin / 60) * dt * rec * (mate ? MATE.recovery : 1);
     w.morale = clamp(w.morale, 0, cap);
   }
 }

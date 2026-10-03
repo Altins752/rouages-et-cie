@@ -240,7 +240,7 @@ Valeurs re-simulées sur le vrai moteur (`npm run sim`) ; elles font foi dans `s
 | Temps manuels | 4 / 6 / 5 / 2 s | 2 / 3 / 2,5 / 1 s (POC v6.1) |
 | Établis | 30 € pondérés | 15 / 20 / 18 / 12 € (POC v6.1) |
 | Outillage | — | 3 niveaux par poste, +25 % chacun, prix de l'unité du palier × 1,5 × 2^niveau, remis à zéro à la modernisation |
-| Prologue | 400 € de dette | 20 € de départ, marché 4 €/s, dette 800 €, échéance 20 min (POC v6.1) |
+| Prologue | 400 € de dette | 20 € de départ, marché 4 €/s (5 €/s depuis la § 22), dette 800 €, échéance 20 min (POC v6.1) |
 | Marché acte I | 24 €/s | 180 €/s |
 | Marché acte II | 1 000 €/s | 1 700 €/s |
 | Marché acte III | 16 000 €/s | 27 000 €/s |
@@ -280,6 +280,10 @@ Demandée après les premières parties (acte III déficitaire, recettes invisib
 | Outillage | 3 niveaux, +25 % | 50 niveaux, global |
 
 Durées simulées (jeu actif, graine 11) : prologue 6,5 min, acte I 39, acte II 47, acte III 55, acte IV 169, total 5 h 16.
+
+## 22. Caractère des ouvriers (4 octobre 2026)
+
+Tiré à l'embauche : ordinaire 40 %, rapide 18 % (+15 % de cadence, fatigue × 1,6), endurant 16 % (−8 %, fatigue × 0,4), bon camarade 10 % (moral de sa chaîne : baisse × 0,8, remontée × 1,4), soigneux 8 % (usure × 0,7), doué 8 % (formations × 0,6). Marché du quartier : 5 €/s.
 
 ## 21. Commandes spéciales (4 octobre 2026)
 

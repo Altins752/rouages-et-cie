@@ -3,42 +3,42 @@
     "acts": [
       {
         "act": 0,
-        "realMin": 10,
-        "gameMin": 10,
+        "realMin": 9.5,
+        "gameMin": 9.5,
         "firstBuy": 30,
-        "maxWait": 15,
-        "maxDry": 75,
-        "buysPer10": 16,
+        "maxWait": 30,
+        "maxDry": 30,
+        "buysPer10": 22.1,
         "done": true
       },
       {
         "act": 1,
-        "realMin": 70.8,
-        "gameMin": 70.8,
+        "realMin": 64.8,
+        "gameMin": 64.8,
         "firstBuy": 15,
-        "maxWait": 15,
-        "maxDry": 15,
-        "buysPer10": 35.1,
+        "maxWait": 0,
+        "maxDry": 0,
+        "buysPer10": 36,
         "done": true
       },
       {
         "act": 2,
-        "realMin": 87.3,
-        "gameMin": 87.3,
+        "realMin": 85,
+        "gameMin": 85,
         "firstBuy": 30,
-        "maxWait": 150,
-        "maxDry": 315,
-        "buysPer10": 51.9,
+        "maxWait": 90,
+        "maxDry": 255,
+        "buysPer10": 55.6,
         "done": true
       },
       {
         "act": 3,
-        "realMin": 105.3,
-        "gameMin": 105.3,
+        "realMin": 101.5,
+        "gameMin": 101.5,
         "firstBuy": 30,
-        "maxWait": 105,
-        "maxDry": 2415,
-        "buysPer10": 106.5,
+        "maxWait": 15,
+        "maxDry": 1860,
+        "buysPer10": 111.1,
         "done": true
       },
       {
@@ -46,122 +46,122 @@
         "realMin": 336,
         "gameMin": 336,
         "firstBuy": 15,
-        "maxWait": 45,
-        "maxDry": 12300,
-        "buysPer10": 9.2,
+        "maxWait": 30,
+        "maxDry": 11460,
+        "buysPer10": 8.8,
         "done": true
       }
     ],
-    "totalH": 10.15
+    "totalH": 9.95
   },
   "actif": {
     "acts": [
       {
         "act": 0,
-        "realMin": 6.4,
-        "gameMin": 10,
+        "realMin": 6.3,
+        "gameMin": 9.8,
         "firstBuy": 16,
-        "maxWait": 16,
-        "maxDry": 48,
-        "buysPer10": 25,
+        "maxWait": 128,
+        "maxDry": 128,
+        "buysPer10": 35.1,
         "done": true
       },
       {
         "act": 1,
-        "realMin": 40.4,
-        "gameMin": 72.9,
+        "realMin": 38.8,
+        "gameMin": 70.2,
         "firstBuy": 8,
-        "maxWait": 0,
-        "maxDry": 0,
+        "maxWait": 8,
+        "maxDry": 8,
         "buysPer10": 60.6,
         "done": true
       },
       {
         "act": 2,
-        "realMin": 44.3,
-        "gameMin": 86.1,
+        "realMin": 44.5,
+        "gameMin": 86.4,
         "firstBuy": 16,
-        "maxWait": 32,
-        "maxDry": 232,
-        "buysPer10": 103,
+        "maxWait": 40,
+        "maxDry": 240,
+        "buysPer10": 106.7,
         "done": true
       },
       {
         "act": 3,
-        "realMin": 58.4,
-        "gameMin": 121.1,
+        "realMin": 54.5,
+        "gameMin": 113.1,
         "firstBuy": 16,
-        "maxWait": 24,
-        "maxDry": 632,
-        "buysPer10": 211.1,
+        "maxWait": 8,
+        "maxDry": 512,
+        "buysPer10": 228.9,
         "done": true
       },
       {
         "act": 4,
-        "realMin": 164,
-        "gameMin": 340.5,
+        "realMin": 163.6,
+        "gameMin": 339.8,
         "firstBuy": 8,
-        "maxWait": 24,
-        "maxDry": 5832,
-        "buysPer10": 20.6,
+        "maxWait": 16,
+        "maxDry": 6024,
+        "buysPer10": 19.6,
         "done": true
       }
     ],
-    "totalH": 5.22
+    "totalH": 5.13
   },
   "rouge": {
     "acts": [
       {
         "act": 0,
-        "realMin": 3.8,
-        "gameMin": 10.6,
+        "realMin": 3.7,
+        "gameMin": 10.4,
         "firstBuy": 12,
         "maxWait": 6,
-        "maxDry": 30,
-        "buysPer10": 42.1,
+        "maxDry": 6,
+        "buysPer10": 59.5,
         "done": true
       },
       {
         "act": 1,
-        "realMin": 28.4,
-        "gameMin": 105.1,
+        "realMin": 25.4,
+        "gameMin": 94,
         "firstBuy": 6,
-        "maxWait": 6,
-        "maxDry": 6,
-        "buysPer10": 117.3,
+        "maxWait": 0,
+        "maxDry": 0,
+        "buysPer10": 114.2,
         "done": true
       },
       {
         "act": 2,
-        "realMin": 24.4,
-        "gameMin": 101.3,
+        "realMin": 23.1,
+        "gameMin": 95.9,
         "firstBuy": 12,
         "maxWait": 18,
-        "maxDry": 42,
-        "buysPer10": 206.6,
+        "maxDry": 48,
+        "buysPer10": 204.8,
         "done": true
       },
       {
         "act": 3,
-        "realMin": 26.9,
-        "gameMin": 123.7,
+        "realMin": 25.3,
+        "gameMin": 116.4,
         "firstBuy": 12,
-        "maxWait": 6,
-        "maxDry": 168,
-        "buysPer10": 426,
+        "maxWait": 42,
+        "maxDry": 144,
+        "buysPer10": 445.1,
         "done": true
       },
       {
         "act": 4,
-        "realMin": 76.6,
-        "gameMin": 352.4,
+        "realMin": 77.7,
+        "gameMin": 357.4,
         "firstBuy": 6,
-        "maxWait": 12,
-        "maxDry": 2712,
-        "buysPer10": 40.9,
+        "maxWait": 6,
+        "maxDry": 2742,
+        "buysPer10": 38.6,
         "done": true
       }
     ],
-    "totalH": 2.67
+    "totalH": 2.59
   }
 }

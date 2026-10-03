@@ -25,6 +25,12 @@ export const migrations: Record<number, Migration> = {
     st.night ??= { rate: 0, duration: 0 };
     return d;
   },
+  // v4 → v5 : caractère des ouvriers ; ceux déjà embauchés sont ordinaires.
+  4: (d) => {
+    const st = d.state as { workers?: { trait?: string }[] };
+    for (const w of st.workers ?? []) w.trait ??= '';
+    return d;
+  },
 };
 
 /** Complète récursivement les champs manquants avec les valeurs par défaut. */

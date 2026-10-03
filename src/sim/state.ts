@@ -1,9 +1,10 @@
-import { KNOW_HOW, LINES, MATERIALS, MORALE, PROLOGUE, ROLES, STATION_COUNT, DOOR_POS, TIER_COUNT } from '../data/balance';
-import type { KnowHowId, RoleId } from '../data/balance';
+import { KNOW_HOW, LINES, MATERIALS, MORALE, PROLOGUE, ROLES, STATION_COUNT, DOOR_POS, TIER_COUNT, TRAITS } from '../data/balance';
+import type { KnowHowId, RoleId, TraitId } from '../data/balance';
+import { rand } from './rng';
 import type { Factory, GameState, Line, Machine, Worker, WorkerKind } from './types';
 
-/** v3 : refonte en usines et chaînes ; v4 : équipe de nuit. Les parties v1 et v2 ne sont pas reprises. */
-export const SAVE_VERSION = 4;
+/** v3 : refonte en usines et chaînes ; v4 : équipe de nuit ; v5 : caractère des ouvriers. Les parties v1 et v2 ne sont pas reprises. */
+export const SAVE_VERSION = 5;
 
 export const WORKER_NAMES = [
   'Marcel', 'Josette', 'Ahmed', 'Lucie', 'Paulo', 'Inès', 'Gégé', 'Nadia', 'Yvon', 'Sonia', 'Kévin', 'Odile',
@@ -37,7 +38,18 @@ export function newFactory(id: number, material = 0): Factory {
   };
 }
 
-export function newWorker(s: GameState, factory: number, kind: WorkerKind, name?: string): Worker {
+/** Tire un caractère selon les poids de TRAITS (générateur de la partie). */
+export function rollTrait(s: GameState): TraitId {
+  const total = TRAITS.reduce((a, t) => a + t.weight, 0);
+  let r = rand(s) * total;
+  for (const t of TRAITS) {
+    r -= t.weight;
+    if (r < 0) return t.id;
+  }
+  return '';
+}
+
+export function newWorker(s: GameState, factory: number, kind: WorkerKind, name?: string, trait: TraitId = ''): Worker {
   const id = s.nextId++;
   let n = name;
   if (!n) {
@@ -49,7 +61,7 @@ export function newWorker(s: GameState, factory: number, kind: WorkerKind, name?
   return {
     id, name: n, kind, level: 1, trainings: 0, trained: 0, factory, line: -1, station: -1,
     morale: MORALE.start, load: 0, state: 'idle', pos: DOOR_POS, from: DOOR_POS, walkTotal: 0, timer: 0,
-    tl: -1, ts: -1, carryLine: -1, carryTo: -1, course: 'none', last: -1, rest: 0,
+    tl: -1, ts: -1, carryLine: -1, carryTo: -1, course: 'none', last: -1, rest: 0, trait,
   };
 }
 

@@ -95,6 +95,17 @@ export const MISSED_QUIPS = {
   ],
 };
 
+/** Caractère des ouvriers : nom court et effet. */
+export const TRAIT_NAMES: Record<string, string> = { '': '', fast: 'Rapide', steady: 'Endurant', mate: 'Bon camarade', careful: 'Soigneux', gifted: 'Doué' };
+export const TRAIT_DESC: Record<string, string> = {
+  '': '',
+  fast: 'travaille 15 % plus vite, mais se fatigue vite',
+  steady: 'un peu plus lent, mais ne se fatigue presque pas',
+  mate: 'sa chaîne garde le moral',
+  careful: 'sa machine s’use 30 % moins',
+  gifted: 'formations 40 % moins chères et plus courtes',
+};
+
 export const SPOT_LEVEL_NAMES = ['Tranquille', 'Serrée', 'Coup de bourre'];
 
 export const ACT_NAMES = ['Prologue — La dette', 'Acte I — La ville', 'Acte II — La région', 'Acte III — Le pays', 'Acte IV — Le monde', 'Bac à sable'];

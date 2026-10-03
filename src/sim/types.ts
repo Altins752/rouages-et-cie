@@ -1,4 +1,4 @@
-import type { KnowHowId, RoleId } from '../data/balance';
+import type { KnowHowId, RoleId, TraitId } from '../data/balance';
 
 /** Un poste d'une chaîne : établi ou machine. */
 export interface Machine {
@@ -81,6 +81,8 @@ export interface Worker {
   last: number;
   /** Pause en cours (relève), en secondes. */
   rest: number;
+  /** Caractère tiré à l'embauche ('' : ordinaire). */
+  trait: TraitId;
 }
 
 /** Consigne de l'ingénieur méthodes. */

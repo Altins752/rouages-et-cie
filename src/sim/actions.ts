@@ -13,7 +13,7 @@ import {
   canPromote, canTrain, conveyorCost, crankUseful, factoryValue, knowHow, knowHowCost, knowHowGain, machineCycle, materialOk,
   modernizeCost, newFactoryCost, nightCost, promotionCost, toolCost, trainingCost, unitPrice,
 } from './formulas';
-import { newFactory, newMachine, newWorker } from './state';
+import { newFactory, newMachine, newWorker, rollTrait } from './state';
 import type { Factory, GameState, Worker } from './types';
 
 export type Result = { ok: true; cost?: number; info?: string } | { ok: false; reason: string };
@@ -69,7 +69,7 @@ export function hire(s: GameState, fi: number): Result {
   if (!f) return fail('usine');
   const p = freePosts(s, fi)[0];
   if (!p) return fail('aucun poste');
-  const w = newWorker(s, fi, p.kind === 'crank' ? 'crank' : 'post');
+  const w = newWorker(s, fi, p.kind === 'crank' ? 'crank' : 'post', undefined, rollTrait(s));
   w.line = p.line;
   w.station = p.station;
   if (p.kind === 'crank') f.lines[p.line].crank = w.id;
@@ -86,7 +86,7 @@ export function polyCount(s: GameState, fi: number): number {
 export function hirePoly(s: GameState, fi: number): Result {
   if (!factoryAt(s, fi)) return fail('usine');
   if (polyCount(s, fi) >= POLY.maxPerFactory) return fail('complet');
-  const w = newWorker(s, fi, 'poly');
+  const w = newWorker(s, fi, 'poly', undefined, rollTrait(s));
   s.workers.push(w);
   return ok(0, w.name);
 }

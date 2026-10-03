@@ -1,6 +1,6 @@
 import {
   ACTS, CONVEYOR, CYCLE, FACTORY_COPY_FACTOR, FERRUM, HALL_GROWTH, KNOW_HOW, MARCEL_PRODUCTIVITY, MATERIALS,
-  MATERIAL_STATION_SHARE, MORALE, NIGHT, POLY, PRESTIGE, PROMOTION, REPUTATION, RESALE, ROBOT_TIER, SCRAP, TOOL_COST_FACTOR,
+  MATERIAL_STATION_SHARE, MORALE, NIGHT, POLY, TRAITS, PRESTIGE, PROMOTION, REPUTATION, RESALE, ROBOT_TIER, SCRAP, TOOL_COST_FACTOR,
   TOOL_COST_GROWTH, TOOL_GAIN, TOOL_TAU, TRAINING, UNIT_GROWTH, UNIT_PRICE,
 } from '../data/balance';
 import type { KnowHowId } from '../data/balance';
@@ -43,9 +43,13 @@ export function moraleCap(s: GameState): number {
 }
 
 /** Productivité propre d'un ouvrier (formations, polyvalence), hors moral. */
+export function trait(w: Worker): (typeof TRAITS)[number] {
+  return TRAITS.find((t) => t.id === (w.trait ?? '')) ?? TRAITS[0];
+}
+
 export function skill(w: Worker): number {
   const base = w.name === 'Marcel' && w.kind === 'poly' ? MARCEL_PRODUCTIVITY : w.kind === 'poly' ? POLY.productivity : 1;
-  return base * (1 + TRAINING.perTraining * w.trained);
+  return base * trait(w).speed * (1 + TRAINING.perTraining * w.trained);
 }
 
 export function workerSpeed(s: GameState, w: Worker): number {
@@ -121,11 +125,11 @@ export function nightCost(kind: 'rate' | 'duration', level: number): number {
 }
 
 export function trainingCost(s: GameState, w: Worker): number {
-  return Math.round(TRAINING.cost[w.level] * Math.pow(TRAINING.growth, w.trainings) * (1 - knowHow(s, 'training') * 0.5));
+  return Math.round(TRAINING.cost[w.level] * Math.pow(TRAINING.growth, w.trainings) * (1 - knowHow(s, 'training') * 0.5) * trait(w).training);
 }
 
 export function trainingTime(s: GameState, w: Worker): number {
-  return TRAINING.time[w.level] * (1 - knowHow(s, 'training'));
+  return TRAINING.time[w.level] * (1 - knowHow(s, 'training')) * trait(w).training;
 }
 
 export function promotionCost(s: GameState, w: Worker): number {

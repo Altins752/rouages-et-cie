@@ -31,6 +31,7 @@ describe('acte II : moral', () => {
         A.hirePoly(s, 0);
         s.workers[s.workers.length - 1].level = 2;
       }
+      for (const w of s.workers) w.trait = '';
       advance(s, 2400, { red: false }, 0.25);
       return Math.min(...s.workers.map((w) => w.morale));
     };

@@ -12,7 +12,7 @@ import type { EnergyKind, ResearchId, Result } from '../sim/actions';
 import { dur, fmt, fmtP } from './format';
 import { TIER_OPERATOR_LEVEL } from '../data/balance';
 import { nightDuration, nightRate, promotionTime, trainingTime } from '../sim/formulas';
-import { KNOW_HOW_NAMES, LEVEL_NAMES, MACHINE_NAMES, MATERIAL_NAMES, ROLE_NAMES, STATION_NAMES, TIER_NAMES } from './text';
+import { KNOW_HOW_NAMES, LEVEL_NAMES, MACHINE_NAMES, MATERIAL_NAMES, ROLE_NAMES, STATION_NAMES, TIER_NAMES, TRAIT_DESC, TRAIT_NAMES } from './text';
 import { toast } from './toast';
 
 function done(r: Result, okText: string | ((r: Result) => string), sound: Parameters<typeof sfx>[0] = 'buy'): boolean {
@@ -31,7 +31,7 @@ export function hire(fi = G.factory): void {
   if (r.ok) {
     const w = G.s.workers[G.s.workers.length - 1];
     const where = w.kind === 'crank' ? `manivelle du convoyeur, chaîne ${w.line + 1}` : `${STATION_NAMES[w.station].toLowerCase()}, chaîne ${w.line + 1}`;
-    done(r, `👷 ${w.name} embauché·e : ${where}`, 'hire');
+    done(r, `👷 ${w.name} embauché·e : ${where}${w.trait ? ` · ${TRAIT_NAMES[w.trait].toLowerCase()} (${TRAIT_DESC[w.trait]})` : ''}`, 'hire');
     return;
   }
   done(r, '');
@@ -40,7 +40,10 @@ export function hire(fi = G.factory): void {
 
 export function hirePoly(fi = G.factory): void {
   const r = A.hirePoly(G.s, fi);
-  done(r, (x) => `👷 ${x.ok ? x.info : ''} embauché·e comme polyvalent·e`, 'hire');
+  done(r, (x) => {
+    const w = G.s.workers[G.s.workers.length - 1];
+    return `👷 ${x.ok ? x.info : ''} embauché·e comme polyvalent·e${w?.trait ? ` · ${TRAIT_NAMES[w.trait].toLowerCase()}` : ''}`;
+  }, 'hire');
   if (!r.ok && r.reason === 'complet') toast('Six polyvalents au plus par usine', true);
 }
 

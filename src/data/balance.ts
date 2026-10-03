@@ -257,7 +257,7 @@ export interface ActDef {
 }
 
 export const ACTS: readonly ActDef[] = [
-  { id: 0, market: 4, maxFactories: 1, hall: 0, vmax: 3, goal: { kind: 'debt' } },
+  { id: 0, market: 5, maxFactories: 1, hall: 0, vmax: 3, goal: { kind: 'debt' } },
   { id: 1, market: 220, maxFactories: 2, hall: 400, vmax: 4, goal: { kind: 'share', share: 0.5, hold: 30 } },
   { id: 2, market: 3000, maxFactories: 4, hall: 3000, vmax: 4.5, goal: { kind: 'share', share: 0.5, hold: 30 } },
   { id: 3, market: 32000, maxFactories: 8, hall: 15000, vmax: 5, goal: { kind: 'share', share: 0.5, hold: 30 } },
@@ -360,6 +360,23 @@ export const KNOW_HOW: readonly KnowHowDef[] = [
 ];
 
 // ---------------------------------------------------------------- Divers
+
+/**
+ * Caractère des ouvriers, tiré à l'embauche (poids). speed : cadence ; fatigue : vitesse de
+ * baisse du moral ; wear : usure de sa machine ; training : prix et durée des formations.
+ * Le « bon camarade » remonte le moral de sa chaîne (MATE).
+ */
+export type TraitId = '' | 'fast' | 'steady' | 'mate' | 'careful' | 'gifted';
+export const TRAITS: { id: TraitId; weight: number; speed: number; fatigue: number; wear: number; training: number }[] = [
+  { id: '', weight: 40, speed: 1, fatigue: 1, wear: 1, training: 1 },
+  { id: 'fast', weight: 18, speed: 1.15, fatigue: 1.6, wear: 1, training: 1 },
+  { id: 'steady', weight: 16, speed: 0.92, fatigue: 0.4, wear: 1, training: 1 },
+  { id: 'mate', weight: 10, speed: 1, fatigue: 1, wear: 1, training: 1 },
+  { id: 'careful', weight: 8, speed: 1, fatigue: 1, wear: 0.7, training: 1 },
+  { id: 'gifted', weight: 8, speed: 1, fatigue: 1, wear: 1, training: 0.6 },
+];
+/** Effet du bon camarade sur sa chaîne (ou toute l'usine s'il est polyvalent). */
+export const MATE = { drop: 0.8, recovery: 1.4 };
 
 /**
  * Récompenses des quêtes (story/quests) : secondes de marché de l'acte, ou « tool » pour un

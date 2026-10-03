@@ -23,7 +23,7 @@ import type { View } from './panel';
 import { dataView } from './data';
 import { revenueRate } from './rates';
 import {
-  ACT_NAMES, KIND_NAMES, SPOT_LEVEL_NAMES, KNOW_HOW_DESC, KNOW_HOW_NAMES, LEVEL_NAMES, MACHINE_NAMES, MARKET_NAMES, MATERIAL_DESC,
+  ACT_NAMES, KIND_NAMES, SPOT_LEVEL_NAMES, TRAIT_DESC, TRAIT_NAMES, KNOW_HOW_DESC, KNOW_HOW_NAMES, LEVEL_NAMES, MACHINE_NAMES, MARKET_NAMES, MATERIAL_DESC,
   MATERIAL_NAMES, ROLE_DATA, ROLE_DECISION, ROLE_NAMES, STATION_ICONS, STATION_NAMES, STATION_ROLE, TIER_NAMES, TIER_SHORT,
 } from './text';
 
@@ -369,7 +369,7 @@ function vEquipe(s: GameState): View {
   const order = [...shown].sort((a, b) => (a.kind === b.kind ? a.line * 10 + a.station - (b.line * 10 + b.station) : ['post', 'crank', 'poly'].indexOf(a.kind) - ['post', 'crank', 'poly'].indexOf(b.kind)));
   for (const x of order) {
     const id = x.id;
-    h += `<div class="card col wk${recOn(`tr${id}`) ? ' rec' : ''}" data-hl="w:${id}"><div class="row"><div class="info"><div class="nm">${esc(x.name)} <span class="tag">${LEVEL_NAMES[x.level]}</span> <span class="dots" aria-label="${x.trainings} formations sur ${TRAINING.perLevel}">${'●'.repeat(x.trainings)}${'○'.repeat(TRAINING.perLevel - x.trainings)}</span></div><div class="ef" data-k="wk${id}"></div>`;
+    h += `<div class="card col wk${recOn(`tr${id}`) ? ' rec' : ''}" data-hl="w:${id}"><div class="row"><div class="info"><div class="nm">${esc(x.name)} <span class="tag">${LEVEL_NAMES[x.level]}</span>${x.trait ? ` <span class="tag trait" title="${TRAIT_DESC[x.trait]}">${TRAIT_NAMES[x.trait]}</span>` : ''} <span class="dots" aria-label="${x.trainings} formations sur ${TRAINING.perLevel}">${'●'.repeat(x.trainings)}${'○'.repeat(TRAINING.perLevel - x.trainings)}</span></div><div class="ef" data-k="wk${id}"></div>`;
     if (s.roles.hr) h += `<div class="bar" style="height:4px;margin-top:3px"><i data-w="wm${id}" style="background:${x.morale < 0.5 ? '#ff5a4a' : '#57d987'}"></i></div>`;
     h += '</div><div class="btns mini">';
     if (x.kind !== 'crank') {
