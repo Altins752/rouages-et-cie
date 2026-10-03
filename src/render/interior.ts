@@ -375,16 +375,16 @@ function drawLamps(style: HallStyle, era: Era, lights: number, amb: number): voi
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   for (let s = 0; s < 4; s++) {
-    rr(SX[s] - 25, 83, 50, 11, ei === 0 ? 2.5 : 1, ctx);
+    rr(SX[s] - 25, 79.5, 50, 10.5, ei === 0 ? 2.5 : 1, ctx);
     ctx.fillStyle = plate.bg;
     ctx.fill();
     ctx.lineWidth = 0.7;
     ctx.strokeStyle = plate.edge;
-    rr(SX[s] - 24, 84, 48, 9, ei === 0 ? 2 : 0.6, ctx);
+    rr(SX[s] - 24, 80.5, 48, 8.5, ei === 0 ? 2 : 0.6, ctx);
     ctx.stroke();
     ctx.fillStyle = plate.fg;
-    ctx.fillText(STATION_NAMES[s], SX[s], 88.8);
-    if (ei === 0) rivets(ctx, [[SX[s] - 22.5, 88.5], [SX[s] + 22.5, 88.5]], 0.6);
+    ctx.fillText(STATION_NAMES[s], SX[s], 85);
+    if (ei === 0) rivets(ctx, [[SX[s] - 22.5, 84.8], [SX[s] + 22.5, 84.8]], 0.6);
   }
 }
 
@@ -1219,28 +1219,121 @@ function drawEmptySlot(l: number, st: number): void {
 
 // ------------------------------------------------------------------ Couche des signaux
 
-/** Rapport du contremaître : cadence de chaque poste, goulot de chaque chaîne. */
+/**
+ * Afficheurs de cadence (rapport du contremaître) : un compteur ambré sur potence au-dessus de chaque poste,
+ * comme ceux du pupitre, et un tableau en tête de chaque chaîne. Gros chiffres, unité discrète,
+ * avancement du cycle en bas du compteur ; le goulot s'affiche en rouge.
+ */
 function drawOverlay(f: Factory, fi: number): void {
   if (!R.S.roles.foreman) return;
   const est = estimateFactory(R.S, fi);
-  const size = uiFont(10, 7.5);
-  // loin : seuls les goulots restent affichés
+  const dpr = R.O.dpr ?? 1;
+  // échelle : les chiffres gardent au moins 13 px à l'écran
+  const k = clamp((13 * dpr) / (7.5 * R.zoom), 1, 1.5);
+  // loin : seuls les goulots et les tableaux de chaîne restent affichés
   const sparse = R.zoom < 1.05;
   f.lines.forEach((line, l) => {
+    if (!line.slots.some(Boolean)) return;
     const b = est.lineBottleneck[l];
-    // cadence de la chaîne : celle de son poste le plus lent
-    if (line.slots.some(Boolean)) {
-      const out = b >= 0 ? est.rate[l][b] : 0;
-      tag(out > 0 ? `→ ${perMin(out, 1)}/min` : '→ arrêt', 34, LY[l] - 22, size, out > 0 ? '#9fe8b4' : '#9aa1aa', 'rgba(14,30,20,.88)');
-    }
+    const y = LY[l] - 19.5;
+    const out = b >= 0 ? est.rate[l][b] : 0;
+    chainBoard(l, Math.max(30, 22 * k + 2), y, out, k);
     line.slots.forEach((m, s) => {
       if (!m) return;
       const r = est.rate[l][s];
-      const slow = s === b;
+      const slow = s === b && r > 0;
       if (sparse && !slow && r > 0) return;
-      tag(r <= 0 ? 'arrêt' : `${perMin(r, 1)}/min`, SX[s], LY[l] - 22, size, r <= 0 ? '#9aa1aa' : slow ? '#ff7a6a' : '#ffc061');
+      const busy = m.busy && !m.broken && m.service <= 0;
+      const prog = busy && m.tier < 3 ? clamp(m.prog / machineCycle(R.S, f.material, m.tier, s), 0, 1) : -1;
+      rateDisplay(SX[s], y, r, slow, prog, k);
     });
   });
+}
+
+/** Boîtier d'afficheur : lunette métallique, fond sombre, reflet de vitre. */
+function bezel(x: number, y: number, w: number, h: number, edge: string, bg: string): void {
+  const u = R.ui;
+  u.fillStyle = 'rgba(0,0,0,.45)';
+  rr(x - w / 2 + 0.6, y - h / 2 + 0.8, w, h, h * 0.18, u);
+  u.fill();
+  u.fillStyle = '#3a3e45';
+  rr(x - w / 2, y - h / 2, w, h, h * 0.18, u);
+  u.fill();
+  u.fillStyle = edge;
+  rr(x - w / 2 + 0.5, y - h / 2 + 0.5, w - 1, h - 1, h * 0.15, u);
+  u.fill();
+  u.fillStyle = bg;
+  rr(x - w / 2 + 1.2, y - h / 2 + 1.2, w - 2.4, h - 2.4, h * 0.1, u);
+  u.fill();
+  u.fillStyle = 'rgba(255,255,255,.07)';
+  u.fillRect(x - w / 2 + 1.2, y - h / 2 + 1.2, w - 2.4, (h - 2.4) * 0.42);
+}
+
+/** Chiffres lumineux suivis d'une unité discrète, centrés. */
+function digits(main: string, unit: string, x: number, y: number, size: number, col: string): void {
+  const u = R.ui;
+  u.textBaseline = 'alphabetic';
+  u.font = `700 ${size}px "Share Tech Mono", monospace`;
+  const wm = u.measureText(main).width;
+  u.font = `600 ${size * 0.5}px "Share Tech Mono", monospace`;
+  const wu = unit ? u.measureText(unit).width + size * 0.12 : 0;
+  const x0 = x - (wm + wu) / 2;
+  u.textAlign = 'left';
+  u.font = `700 ${size}px "Share Tech Mono", monospace`;
+  u.shadowColor = col;
+  u.shadowBlur = size * 0.5 * (R.zoom);
+  u.fillStyle = col;
+  u.fillText(main, x0, y + size * 0.36);
+  u.shadowBlur = 0;
+  if (unit) {
+    u.font = `600 ${size * 0.5}px "Share Tech Mono", monospace`;
+    u.globalAlpha = 0.75;
+    u.fillText(unit, x0 + wm + size * 0.12, y + size * 0.36);
+    u.globalAlpha = 1;
+  }
+}
+
+/** Compteur d'un poste, sur sa potence. */
+function rateDisplay(x: number, y: number, r: number, slow: boolean, prog: number, k: number): void {
+  const u = R.ui;
+  const w = 30 * k;
+  const h = 12 * k;
+  // potence jusqu'au haut de la machine
+  u.fillStyle = '#2a2d32';
+  u.fillRect(x - 0.5, y + h / 2, 1, Math.max(0, 13 - h / 2));
+  const stop = r <= 0;
+  const col = stop ? '#8a9099' : slow ? '#ff5a4a' : '#ffb02e';
+  bezel(x, y, w, h, slow ? '#ff5a4a' : '#1b1d21', slow ? '#1c0806' : '#140e05');
+  if (stop) digits('arrêt', '', x, y - 0.6 * k, 6 * k, col);
+  else digits(perMin(r), '/min', x, y - 0.8 * k, 7.5 * k, col);
+  // avancement du cycle, en bas du cadran
+  if (prog >= 0) {
+    const bw = w - 5 * k;
+    u.fillStyle = 'rgba(255,176,46,.15)';
+    u.fillRect(x - bw / 2, y + h / 2 - 2.6 * k, bw, 0.9 * k);
+    u.fillStyle = slow ? '#ff5a4a' : '#ffb02e';
+    u.fillRect(x - bw / 2, y + h / 2 - 2.6 * k, bw * prog, 0.9 * k);
+  }
+}
+
+/** Tableau en tête de chaîne : numéro et cadence de sortie (celle du goulot). */
+function chainBoard(l: number, x: number, y: number, out: number, k: number): void {
+  const u = R.ui;
+  const w = 42 * k;
+  const h = 13 * k;
+  bezel(x, y, w, h, '#1b1d21', '#06120a');
+  // bandeau jaune avec le numéro de chaîne
+  u.fillStyle = '#f2b705';
+  rr(x - w / 2 + 1.2, y - h / 2 + 1.2, 10 * k, h - 2.4, h * 0.1, u);
+  u.fill();
+  u.fillStyle = '#16140f';
+  u.font = `700 ${6 * k}px "Share Tech Mono", monospace`;
+  u.textAlign = 'center';
+  u.textBaseline = 'middle';
+  u.fillText(`C${l + 1}`, x - w / 2 + 6.2 * k, y + 0.3 * k);
+  const cx = x + 5 * k;
+  if (out > 0) digits(perMin(out), '/min', cx, y - 0.8 * k, 8 * k, '#7dffa8');
+  else digits('arrêt', '', cx, y - 0.6 * k, 6 * k, '#8a9099');
 }
 
 /** Indicateurs par machine : avancement du cycle, usure (superviseur), intervention en cours. */
@@ -1254,7 +1347,7 @@ function drawMachineUi(f: Factory, fi: number): void {
     const x = SX[s];
     const y = LY[l];
     const busy = m.busy && !m.broken && m.service <= 0;
-    if (near && busy && m.tier < 3) {
+    if (near && busy && m.tier < 3 && !S.roles.foreman) {
       const k = clamp(m.prog / machineCycle(S, f.material, m.tier, s), 0, 1);
       u.fillStyle = 'rgba(10,11,9,.65)';
       u.fillRect(x - 16, y - 13, 32, 1.8);
@@ -1268,9 +1361,9 @@ function drawMachineUi(f: Factory, fi: number): void {
       u.fillRect(x - 16, y + 34, 32 * m.wear, 1.8);
     }
     if (m.service > 0) {
-      tag(`${m.serviceKind === 'repair' ? 'réparation' : 'révision'} ${Math.ceil(m.service)} s`, x, y - 17, uiFont(9, 7), `rgb(${SIG.service})`);
+      tag(`${m.serviceKind === 'repair' ? 'réparation' : 'révision'} ${Math.ceil(m.service)} s`, x, y + 4, uiFont(9, 7), `rgb(${SIG.service})`);
     } else if (m.broken) {
-      tag('panne', x, y - 17, uiFont(9, 7), `rgb(${SIG.fault})`);
+      tag('panne', x, y + 4, uiFont(9, 7), `rgb(${SIG.fault})`);
     }
     if (O.hover && O.hover.hall === fi && O.hover.line === l && O.hover.station === s) {
       u.strokeStyle = `rgb(${SIG.select})`;
@@ -1359,9 +1452,10 @@ export function drawInterior(f: Factory, fi: number, dt: number): void {
   // repères des chaînes
   const size = uiFont(9, 7);
   for (let l = 0; l < f.lines.length; l++) {
+    if (S.roles.foreman && f.lines[l].slots.some(Boolean)) continue;
     tag(`C${l + 1}`, 11, LY[l] + 2, size, f.lines[l].slots.some(Boolean) ? '#ffb02e' : 'rgba(255,176,46,.45)');
   }
-  if (S.factories.length > 1) tag(`USINE ${fi + 1}`, 28, 104, uiFont(10, 8), '#ffb02e');
+  if (S.factories.length > 1) tag(`USINE ${fi + 1}`, 34, 7, uiFont(10, 8), '#ffb02e');
   drawHighlight(f, fi);
   drawMachineUi(f, fi);
   drawOverlay(f, fi);

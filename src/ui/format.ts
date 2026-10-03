@@ -46,8 +46,13 @@ export function fmtP(x: number, digits = 2): string {
 export const PER_MIN = 60;
 
 /** Une cadence (par seconde de jeu) affichée par minute. */
-export function perMin(x: number, digits = 2): string {
-  return fmtP(x * PER_MIN, digits);
+export function perMin(x: number, digits = 1): string {
+  // pas de décimales inutiles : 77/min se lit mieux que 77,40/min
+  const v = x * PER_MIN;
+  const a = Math.abs(v);
+  if (a >= 1000) return fmt(v);
+  if (a >= 10) return Math.round(v).toString();
+  return v.toFixed(digits).replace('.', ',');
 }
 
 export function pct(x: number): string {
