@@ -1227,6 +1227,11 @@ function drawOverlay(f: Factory, fi: number): void {
   const sparse = R.zoom < 1.05;
   f.lines.forEach((line, l) => {
     const b = est.lineBottleneck[l];
+    // cadence de la chaîne : celle de son poste le plus lent
+    if (line.slots.some(Boolean)) {
+      const out = b >= 0 ? est.rate[l][b] : 0;
+      tag(out > 0 ? `→ ${out.toFixed(2).replace('.', ',')}/s` : '→ arrêt', 34, LY[l] - 22, size, out > 0 ? '#9fe8b4' : '#9aa1aa', 'rgba(14,30,20,.88)');
+    }
     line.slots.forEach((m, s) => {
       if (!m) return;
       const r = est.rate[l][s];
