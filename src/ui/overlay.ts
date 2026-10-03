@@ -103,6 +103,8 @@ export interface MenuOpts {
   onResume: () => void;
   onNew: () => void;
   stats: string;
+  tutorial: boolean;
+  onTutorial: (on: boolean) => void;
 }
 
 export function showMenu(o: MenuOpts): void {
@@ -113,12 +115,21 @@ export function showMenu(o: MenuOpts): void {
     <p>${o.stats}</p>
     <div class="menu">
       <button class="buy" type="button" id="ovRes" data-autofocus><span class="c">Reprendre</span><small>Échap</small></button>
+      <button class="buy plain" type="button" id="ovTut" aria-pressed="${o.tutorial}"><span class="c" id="ovTutC">Tutoriel : ${o.tutorial ? 'activé' : 'désactivé'}</span><small>Marcel guide au début de chaque phase</small></button>
       <button class="buy alt" type="button" id="ovNew"><span class="c">Nouvelle partie</span><small id="ovNewSub">efface la partie en cours</small></button>
     </div>
-    <p class="credits">La partie est sauvegardée automatiquement dans ce navigateur. L’usine continue de tourner (à vitesse normale) quand vous êtes absent, jusqu’à 8 heures.</p>`,
+    <p class="credits">La partie est sauvegardée automatiquement dans ce navigateur. En votre absence, seule l’équipe de nuit (à partir de l’acte II) fait tourner l’usine.</p>`,
     o.onResume,
   );
   $('ovRes').addEventListener('click', () => closeOverlay());
+  let tut = o.tutorial;
+  $('ovTut').addEventListener('click', () => {
+    tut = !tut;
+    o.onTutorial(tut);
+    $('ovTut').setAttribute('aria-pressed', String(tut));
+    $('ovTutC').textContent = `Tutoriel : ${tut ? 'activé' : 'désactivé'}`;
+    sfx('click');
+  });
   $('ovNew').addEventListener('click', () => {
     if (!armed) {
       armed = true;

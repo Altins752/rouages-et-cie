@@ -81,3 +81,10 @@ Format : date — décision — raison.
 - 2026-10-04 — Récompenses : quelques secondes de marché de l'acte (QUEST_REWARD dans balance.ts), ou un niveau d'outillage offert sur le poste le moins outillé (former un ouvrier à l'acte I, recruter les RH à l'acte II). L'objectif de l'acte ne rapporte rien et n'est bloqué par aucune quête. — Coups de pouce, pas raccourcis ; « jamais bloqué ».
 - 2026-10-04 — « Aide Marcel » (bouton ? de chaque quête) : une bulle pas à pas désigne l'onglet puis le bouton à utiliser (contour qui clignote, défilement automatique du panneau), et chaque étape d'action se valide en la faisant. Échap ou « Je connais, Marcel » la ferme. — Même moteur que le tutoriel à venir (ui/guide.ts).
 - 2026-10-04 — Campagne avec les quêtes (graine 11) : calme 10 h 05, actif 5 h 12, zone rouge 2 h 40 ; critères respectés.
+
+## Tutoriel : le rail de Marcel (2026-10-04)
+
+- 2026-10-04 — Au prologue, Marcel guide sur des rails (9 étapes) : accélérer le temps, embaucher, compléter la chaîne 1, lire le goulot, outiller, la dette, le carnet. Le reste du panneau est grisé tant que l'étape n'est pas faite ; les étapes d'action se valident en agissant. — Les jeux de gestion guident pas à pas au début ; sans repères, le pupitre perd le joueur.
+- 2026-10-04 — À chaque acte, un rail court (3 à 5 étapes) montre où sont les nouveautés, avec « Compris » et sans panneau grisé ni achat imposé. — Au début d'un acte la caisse est souvent vide : exiger un achat coincerait le joueur (invariant 6).
+- 2026-10-04 — L'étape « outiller » du prologue est toujours faisable : le panneau grisé empêche de dépenser ailleurs, et le bouton affiche le délai avant de pouvoir payer. L'échéance de la dette est gelée tant que le rail du prologue est affiché. — Le tutoriel ne doit coûter ni argent ni temps au joueur.
+- 2026-10-04 — Le rail se lance après le télex, au début de l'acte seulement (une partie reprise en cours d'acte ne le rejoue pas) ; « Je connais, Marcel » ou Échap l'arrêtent ; l'option « Tutoriel » du menu le coupe pour la suite. La progression est mémorisée dans la partie (story.flags). — Ne jamais l'imposer à qui connaît déjà le jeu.

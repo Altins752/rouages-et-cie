@@ -321,3 +321,8 @@ kbd {
 .guide-target { outline: 3px solid #ffd84a !important; outline-offset: 2px; animation: guidePulse 1.1s ease-in-out infinite; position: relative; z-index: 2; }
 @keyframes guidePulse { 50% { outline-color: rgba(255,216,74,.25); } }
 @media (prefers-reduced-motion: reduce) { .guide-target { animation: none; } }
+
+/* Rail du tutoriel : seul l'élément désigné reste utilisable dans le panneau */
+.railing #list > :not(:has(.guide-target)):not(.guide-target) { opacity: .32; pointer-events: none; filter: saturate(.4); }
+.railing #list .btns > button:not(.guide-target), .railing #list .seg > button:not(.guide-target) { opacity: .4; pointer-events: none; }
+.railing #tabs button:not(.guide-target) { opacity: .45; pointer-events: none; }

@@ -18,6 +18,7 @@ import type { GameState, SimEvent } from './sim/types';
 import { storyTick } from './story/director';
 import { guideActive, guideTick, stopGuide } from './ui/guide';
 import { resetQuests, updateQuests } from './ui/quests';
+import { freezeDebt, tutorialTick } from './ui/tutorial';
 import { endingMsgs } from './story/script';
 import { clearSave, hasSave, loadLocal, saveLocal } from './save/save';
 import * as U from './ui/actions';
@@ -512,6 +513,12 @@ $('btnMenu').addEventListener('click', () => {
     onNew: () => {
       startNew();
     },
+    tutorial: G.settings.tutorial,
+    onTutorial: (on: boolean) => {
+      G.settings.tutorial = on;
+      saveSettings();
+      if (!on && guideActive()) stopGuide(true);
+    },
     stats: `${ACT_NAMES[G.s.act]} · ${fmt(st.produced)} écrous produits · ${dur(st.playTime)} de jeu.`,
   });
 });
@@ -579,6 +586,7 @@ function tick(now: number): void {
       acc -= SIM_DT;
       n++;
     }
+    freezeDebt(n * SIM_DT);
     if (n >= 80) acc = 0;
     if (s.fx.length) {
       handleEvents(s.fx);
@@ -616,7 +624,8 @@ function tick(now: number): void {
   updateGauge();
   ambientTick(view);
   saleTick(rdt);
-  $('hint').classList.toggle('show', G.started && !G.paused && s.act === 0 && s.t < 120 && G.lastInput === 0 && !telexOpen());
+  $('hint').classList.toggle('show', G.started && !G.paused && s.act === 0 && s.t < 120 && G.lastInput === 0 && !telexOpen() && !guideActive());
+  tutorialTick(!overlayOpen() && !telexOpen());
   guideTick();
   uiT += rdt;
   if (uiT > 0.2) {

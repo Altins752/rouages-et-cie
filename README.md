@@ -53,7 +53,7 @@ Les recettes en €/s sont toujours affichées sur le pupitre, à côté de la c
 
 En votre absence, l'usine ne tourne que si vous avez une **équipe de nuit** (à partir de l'acte II) : à son rendement, pendant sa durée de travail. Le rapport d'absence vous rappelle aussi, avec tact, ce que vous auriez pu gagner.
 
-En haut à droite de l'usine, le **carnet de Marcel** propose des quêtes courtes, récompensées, qui mènent à l'objectif de l'acte. Le bouton « ? » d'une quête lance l'aide de Marcel, qui montre pas à pas où cliquer.
+Au début de la partie, Marcel vous guide pas à pas ; il revient brièvement à chaque acte pour montrer les nouveautés (option « Tutoriel » dans le menu). En haut à droite de l'usine, le **carnet de Marcel** propose des quêtes courtes, récompensées, qui mènent à l'objectif de l'acte. Le bouton « ? » d'une quête lance l'aide de Marcel, qui montre pas à pas où cliquer.
 
 Le clic ne produit rien : il **accélère le temps**. Clic maintenu (ou barre d'espace) : zone verte. Pour la zone rouge, il faut cliquer très vite ; les machines s'usent alors cinq fois plus.
 
